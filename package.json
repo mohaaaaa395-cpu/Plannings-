@@ -1,0 +1,19 @@
+{
+  "name": "cedif-planning",
+  "version": "1.0.0",
+  "description": "Application de génération automatique de plannings — CEDIF Saint-Antoine",
+  "private": true,
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "build": "cd client && npm install && npm run build",
+    "start": "cd server && node src/index.js",
+    "migrate": "cd server && npm run migrate",
+    "seed": "cd server && npm run seed",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "test": "cd server && node test/engine.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
