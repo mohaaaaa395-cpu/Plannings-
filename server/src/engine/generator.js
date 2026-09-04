@@ -1,7 +1,9 @@
-import { isoWeekday, isSunday as dateIsSunday, isSaturday, withinRange } from '../dates.js';
-import { buildShift, restShift, fullDayMinutes, maxDayMinutes, dayBounds } from './shifts.js';
+import { isoWeekday, isSunday as dateIsSunday, isSaturday } from '../dates.js';
+import { restShift, maxDayMinutes, dayBounds } from './shifts.js';
 import { EquityTracker, capacityFor } from './equity.js';
 import { scoreCandidate } from './scorer.js';
+import { computeWindows, buildDayShifts, findGaps } from './coverage.js';
+import { toMinutes, fromMinutes } from '../time.js';
 
 // Seeded PRNG (mulberry32) for reproducible, diverse candidates.
 function mulberry32(seed) {
@@ -15,20 +17,15 @@ function mulberry32(seed) {
   };
 }
 
-// Is an employee allowed to work on a given date (hard constraints only)?
+// An employee can work a date iff they have at least one availability window.
 export function availableOnDate(emp, date, ctx) {
-  const wd = isoWeekday(date);
-  if (!ctx.config.store.open_days.includes(wd)) return false;
-  if (emp.weekend_only && wd < 6) return false;
-  const abs = ctx.absencesByEmp[emp.id] || [];
-  for (const a of abs) {
-    if (withinRange(date, a.start_date, a.end_date)) return false;
-  }
-  for (const av of emp.availability || []) {
-    if (!av.is_hard) continue;
-    if (av.kind === 'unavailable' && (av.weekday == null || av.weekday === wd)) return false;
-  }
-  return true;
+  return computeWindows(emp, date, ctx).length > 0;
+}
+
+// A manager can perform the Tuesday order iff a window starts before the deadline.
+function canDoOrder(emp, date, ctx) {
+  const deadline = toMinutes(ctx.config.order.deadline);
+  return computeWindows(emp, date, ctx).some((win) => win[0] < deadline);
 }
 
 function softCostForWorking(emp, date, ctx) {
@@ -51,15 +48,30 @@ export function analyzeFeasibility(ctx) {
     for (const d of week.days) {
       const wd = d.weekday;
       if (!ctx.config.store.open_days.includes(wd)) continue;
+      const { open, close } = dayBounds(ctx.config, dateIsSunday(d.date));
+
       const avail = ctx.employees.filter((e) => availableOnDate(e, d.date, ctx));
       if (avail.length === 0) {
         hard.push(`Aucun salarié disponible le ${d.date} alors que le magasin est ouvert.`);
+        continue;
+      }
+      // Continuous coverage feasibility: union of all available windows must
+      // cover the full opening range.
+      const allWindows = [];
+      for (const e of avail) allWindows.push(...computeWindows(e, d.date, ctx));
+      const gaps = findGaps(allWindows, open, close);
+      if (gaps.length > 0) {
+        const g = gaps[0];
+        hard.push(
+          `Couverture impossible le ${d.date} : le magasin ne peut pas être tenu de ` +
+            `${fromMinutes(g[0])} à ${fromMinutes(g[1])} (aucun salarié disponible sur ce créneau).`
+        );
       }
       if (wd === order.weekday && order.require_manager) {
-        const mgr = avail.filter((e) => e.is_order_manager);
+        const mgr = avail.filter((e) => e.is_order_manager && canDoOrder(e, d.date, ctx));
         if (mgr.length === 0) {
           hard.push(
-            `Aucun responsable (Yassine ou Rose) disponible le mardi ${d.date} pour la commande avant ${order.deadline}.`
+            `Aucun responsable (Yassine ou Rose) disponible le mardi ${d.date} avant ${order.deadline} pour la commande.`
           );
         }
       }
@@ -68,9 +80,7 @@ export function analyzeFeasibility(ctx) {
 
   for (const emp of ctx.employees) {
     for (const week of ctx.weeks.weeks) {
-      const availDates = week.days
-        .map((d) => d.date)
-        .filter((date) => availableOnDate(emp, date, ctx));
+      const availDates = week.days.map((d) => d.date).filter((date) => availableOnDate(emp, date, ctx));
       const maxPossible = availDates.reduce(
         (sum, date) => sum + maxDayMinutes(ctx.config, dateIsSunday(date)),
         0
@@ -92,18 +102,14 @@ function pickLowest(list, scoreFn) {
   let bestScore = Infinity;
   for (const item of list) {
     const s = scoreFn(item);
-    if (s < bestScore) {
-      bestScore = s;
-      best = item;
-    }
+    if (s < bestScore) { bestScore = s; best = item; }
   }
   return best;
 }
 
 function chooseWorkingDayCount(emp, dates, config) {
   if (dates.length === 0) return 0;
-  const maxNonFull = 480; // 8h preferred cap for a normal day
-  const minDay = config.shifts.min_day_minutes;
+  const maxNonFull = 480;
   const kMin = Math.max(1, Math.ceil(emp.contract_minutes / maxNonFull));
   return Math.min(dates.length, kMin);
 }
@@ -122,136 +128,74 @@ function pickWorkingDays(emp, dates, k, tracker, rng, ctx) {
   return scored.slice(0, k).map((x) => x.date);
 }
 
-function assignAnchors(plan, day, config, tracker, rng) {
-  const present = plan.present;
-  if (present.length === 1) {
-    plan.anchors[present[0].id] = 'full';
-    return;
-  }
-  const needOpen = Math.max(1, config.coverage.min_opening);
-  const needClose = Math.max(1, config.coverage.min_closing);
-  const used = new Set();
-  const openers = [];
-
-  if (plan.orderEmpId) {
-    plan.anchors[plan.orderEmpId] = 'open';
-    openers.push(plan.orderEmpId);
-    used.add(plan.orderEmpId);
-  }
-  while (openers.length < needOpen) {
-    const pool = present.filter((e) => !used.has(e.id));
-    if (pool.length === 0) break;
-    const pick = pickLowest(
-      pool,
-      (e) => tracker.fairnessScore(e, 'openings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.3
-    );
-    plan.anchors[pick.id] = 'open';
-    openers.push(pick.id);
-    used.add(pick.id);
-  }
-
-  const closers = [];
-  while (closers.length < needClose) {
-    const pool = present.filter((e) => !used.has(e.id));
-    if (pool.length === 0) {
-      const anyOpener = openers[0];
-      if (anyOpener != null) plan.anchors[anyOpener] = 'full';
-      break;
-    }
-    const pick = pickLowest(
-      pool,
-      (e) => tracker.fairnessScore(e, 'closings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.3
-    );
-    plan.anchors[pick.id] = 'close';
-    closers.push(pick.id);
-    used.add(pick.id);
-  }
-
-  for (const e of present) {
-    if (!plan.anchors[e.id]) plan.anchors[e.id] = 'free';
-  }
-}
-
-// Distribute one employee's weekly contract across their chosen days,
-// accounting for anchor='full' days that are fixed length. Returns a map
-// date -> target worked minutes (for non-full days).
-function distributeWeekTargets(emp, chosenDates, dayPlan, config) {
+// Distribute an employee's weekly contract across chosen days (hints only;
+// the coverage builder adjusts real worked time). Returns date -> minutes.
+function distributeWeekTargets(emp, chosenDates, config) {
   const targets = {};
-  const fullDates = chosenDates.filter((d) => dayPlan[d].anchors[emp.id] === 'full');
-  const otherDates = chosenDates.filter((d) => dayPlan[d].anchors[emp.id] !== 'full');
-  const fixedMin = fullDates.reduce(
-    (s, d) => s + fullDayMinutes(config, dateIsSunday(d)),
-    0
-  );
-  let remaining = emp.contract_minutes - fixedMin;
-  if (otherDates.length === 0) return targets;
-  if (remaining < 0) remaining = otherDates.length * config.shifts.min_day_minutes;
-
+  if (chosenDates.length === 0) return targets;
+  const minDay = config.shifts.min_day_minutes;
   if (emp.weekend_only) {
     const satR = config.noussia.saturday_ratio;
     const sunR = config.noussia.sunday_ratio;
-    const weights = otherDates.map((d) => (isSaturday(d) ? satR : isDateSunday(d) ? sunR : 0.5));
+    const weights = chosenDates.map((d) => (isSaturday(d) ? satR : dateIsSunday(d) ? sunR : 0.5));
     const sum = weights.reduce((a, b) => a + b, 0) || 1;
-    otherDates.forEach((d, i) => {
-      targets[d] = Math.round((remaining * weights[i]) / sum);
+    chosenDates.forEach((d, i) => {
+      targets[d] = clamp(Math.round((emp.contract_minutes * weights[i]) / sum), minDay, maxDayMinutes(config, dateIsSunday(d)));
     });
   } else {
-    const per = Math.round(remaining / otherDates.length);
-    otherDates.forEach((d) => {
-      targets[d] = per;
+    const per = Math.round(emp.contract_minutes / chosenDates.length);
+    chosenDates.forEach((d) => {
+      targets[d] = clamp(per, minDay, maxDayMinutes(config, dateIsSunday(d)));
     });
   }
   return targets;
 }
 
-function isDateSunday(d) {
-  return dateIsSunday(d);
-}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
 
 function maxConsecutive(dates) {
   if (!dates.length) return 0;
   const sorted = [...new Set(dates)].sort();
-  let max = 1;
-  let run = 1;
+  let max = 1, run = 1;
   for (let i = 1; i < sorted.length; i++) {
     const prev = new Date(sorted[i - 1] + 'T00:00:00Z').getTime();
     const cur = new Date(sorted[i] + 'T00:00:00Z').getTime();
-    if (cur - prev === 86400000) {
-      run++;
-      max = Math.max(max, run);
-    } else {
-      run = 1;
-    }
+    if (cur - prev === 86400000) { run++; max = Math.max(max, run); } else { run = 1; }
   }
   return max;
 }
 
-// Build one full 3-week candidate.
 function buildCandidate(ctx, seed) {
   const rng = mulberry32(seed);
   const { config } = ctx;
   const tracker = new EquityTracker(ctx.employees, ctx.weightedHistory);
 
+  // precompute windows per employee per date
+  const windowsPerDate = {};
+  for (const emp of ctx.employees) {
+    windowsPerDate[emp.id] = {};
+    for (const week of ctx.weeks.weeks) {
+      for (const d of week.days) windowsPerDate[emp.id][d.date] = computeWindows(emp, d.date, ctx);
+    }
+  }
+  const availOn = (emp, date) => windowsPerDate[emp.id][date].length > 0;
+
   const availPerWeek = {};
   for (const emp of ctx.employees) {
     availPerWeek[emp.id] = ctx.weeks.weeks.map((week) =>
-      week.days.map((d) => d.date).filter((date) => availableOnDate(emp, date, ctx))
+      week.days.map((d) => d.date).filter((date) => availOn(emp, date))
     );
   }
   const avgAvailDays = {};
   for (const emp of ctx.employees) {
-    const total = availPerWeek[emp.id].reduce((a, w) => a + w.length, 0);
-    avgAvailDays[emp.id] = total / 3 || 1;
+    avgAvailDays[emp.id] = availPerWeek[emp.id].reduce((a, w) => a + w.length, 0) / 3 || 1;
   }
 
   const perEmployee = {};
   for (const emp of ctx.employees) {
     perEmployee[emp.id] = {
       plannedMinutesByWeek: [0, 0, 0],
-      contributions: {
-        saturdays: 0, sundays: 0, weekends: 0, openings: 0, closings: 0,
-        worked_minutes: 0, worked_days: 0, long_days: 0,
-      },
+      contributions: { saturdays: 0, sundays: 0, weekends: 0, openings: 0, closings: 0, worked_minutes: 0, worked_days: 0, long_days: 0 },
       weekStats: [],
       capacity: {
         saturdays: capacityFor('saturdays', emp, avgAvailDays[emp.id]),
@@ -279,50 +223,30 @@ function buildCandidate(ctx, seed) {
       empChosen[emp.id] = new Set(pickWorkingDays(emp, dates, k, tracker, rng, ctx));
     }
 
-    // 2. presence per date
+    // 2. presence per date + ensure at least one worker
     const dayPlan = {};
     for (const d of week.days) {
-      if (!config.store.open_days.includes(d.weekday)) {
-        dayPlan[d.date] = { present: [], anchors: {}, closed: true };
-        continue;
-      }
+      if (!config.store.open_days.includes(d.weekday)) { dayPlan[d.date] = { closed: true }; continue; }
       const present = ctx.employees.filter((e) => empChosen[e.id].has(d.date));
-      dayPlan[d.date] = { present, anchors: {}, orderEmpId: null };
-    }
-
-    // 3. repair coverage: ensure each open day has >=1 worker
-    for (const d of week.days) {
-      const plan = dayPlan[d.date];
-      if (plan.closed) continue;
-      if (plan.present.length === 0) {
-        const avail = ctx.employees.filter((e) => availableOnDate(e, d.date, ctx));
-        if (avail.length === 0) {
-          hardIssues.push(`Aucun salarié disponible le ${d.date}.`);
-          continue;
-        }
-        const chosen = pickLowest(
-          avail,
-          (e) => perEmployee[e.id].plannedMinutesByWeek[wi] + rng() * 30
-        );
+      dayPlan[d.date] = { present, orderEmpId: null };
+      if (present.length === 0) {
+        const avail = ctx.employees.filter((e) => availOn(e, d.date));
+        if (avail.length === 0) { hardIssues.push(`Aucun salarié disponible le ${d.date}.`); continue; }
+        const chosen = pickLowest(avail, (e) => perEmployee[e.id].plannedMinutesByWeek[wi] + rng() * 30);
         empChosen[chosen.id].add(d.date);
-        plan.present.push(chosen);
+        present.push(chosen);
       }
     }
 
-    // 4. Tuesday order manager present in the morning
+    // 3. Tuesday order: ensure a manager present who can order before deadline
     for (const d of week.days) {
       const plan = dayPlan[d.date];
       if (plan.closed) continue;
       if (d.weekday !== config.order.weekday) continue;
-      let mgr = plan.present.find((e) => e.is_order_manager);
+      let mgr = plan.present.find((e) => e.is_order_manager && canDoOrder(e, d.date, ctx));
       if (!mgr && config.order.require_manager) {
-        const mgrAvail = ctx.employees.filter(
-          (e) => e.is_order_manager && availableOnDate(e, d.date, ctx)
-        );
-        if (mgrAvail.length === 0) {
-          hardIssues.push(`Aucun responsable disponible le mardi ${d.date} pour la commande.`);
-          continue;
-        }
+        const mgrAvail = ctx.employees.filter((e) => e.is_order_manager && canDoOrder(e, d.date, ctx));
+        if (mgrAvail.length === 0) { hardIssues.push(`Aucun responsable disponible le mardi ${d.date} pour la commande.`); continue; }
         mgr = pickLowest(mgrAvail, (e) => tracker.get(e.id, 'worked_minutes') / 1000 + rng());
         empChosen[mgr.id].add(d.date);
         plan.present.push(mgr);
@@ -330,21 +254,13 @@ function buildCandidate(ctx, seed) {
       if (mgr) plan.orderEmpId = mgr.id;
     }
 
-    // 5. anchors
-    for (const d of week.days) {
-      const plan = dayPlan[d.date];
-      if (plan.closed || plan.present.length === 0) continue;
-      assignAnchors(plan, d, config, tracker, rng);
-    }
-
-    // 5.5 weekly hour distribution per employee
+    // 4. weekly hour hints
     const weekTargets = {};
     for (const emp of ctx.employees) {
-      const chosen = [...empChosen[emp.id]];
-      weekTargets[emp.id] = distributeWeekTargets(emp, chosen, dayPlan, config);
+      weekTargets[emp.id] = distributeWeekTargets(emp, [...empChosen[emp.id]], config);
     }
 
-    // 6. build shifts
+    // 5. build each day with guaranteed continuous coverage
     const daysOut = [];
     for (const d of week.days) {
       const plan = dayPlan[d.date];
@@ -357,112 +273,95 @@ function buildCandidate(ctx, seed) {
       }
       if (config.deliveries.weekdays.includes(d.weekday)) events.delivery = true;
 
-      const shifts = [];
-      if (!plan.closed) {
-        for (const emp of plan.present) {
-          const anchor = plan.anchors[emp.id] || 'free';
-          let shift;
-          if (anchor === 'full') {
-            shift = buildShift(config, sunday, 'full', 0);
-          } else {
-            const target = weekTargets[emp.id][d.date] ?? config.shifts.min_day_minutes;
-            shift = buildShift(config, sunday, anchor, target);
-          }
-          shift.employee_id = emp.id;
-          shift.is_order = plan.orderEmpId === emp.id;
-          shifts.push(shift);
-
-          const pe = perEmployee[emp.id];
-          pe.plannedMinutesByWeek[wi] += shift.worked_minutes;
-          pe.contributions.worked_minutes += shift.worked_minutes;
-          pe.contributions.worked_days += 1;
-          pe.workDates.push(d.date);
-          if (shift.is_opening) { pe.contributions.openings += 1; tracker.add(emp.id, 'openings'); }
-          if (shift.is_closing) { pe.contributions.closings += 1; tracker.add(emp.id, 'closings'); }
-          if (d.weekday === 6) { pe.contributions.saturdays += 1; tracker.add(emp.id, 'saturdays'); }
-          if (d.weekday === 7) { pe.contributions.sundays += 1; tracker.add(emp.id, 'sundays'); }
-          if (shift.worked_minutes >= config.shifts.long_day_minutes) {
-            pe.contributions.long_days += 1; tracker.add(emp.id, 'long_days');
-          }
-          tracker.add(emp.id, 'worked_minutes', shift.worked_minutes);
-          softViolations += softCostForWorking(emp, d.date, ctx);
-        }
-        for (const emp of ctx.employees) {
-          if (!plan.present.find((e) => e.id === emp.id)) {
-            const rest = restShift();
-            rest.employee_id = emp.id;
-            shifts.push(rest);
-          }
-        }
-      } else {
-        for (const emp of ctx.employees) {
-          const rest = restShift();
-          rest.employee_id = emp.id;
-          rest.note = 'Magasin fermé';
-          shifts.push(rest);
-        }
-      }
-
-      daysOut.push({
-        date: d.date,
-        weekday: d.weekday,
-        is_sunday: sunday,
+      const dayMeta = {
+        date: d.date, weekday: d.weekday, is_sunday: sunday,
         open_time: sunday ? config.store.sunday_open : config.store.weekday_open,
         close_time: sunday ? config.store.sunday_close : config.store.weekday_close,
-        events,
-        shifts,
-      });
+      };
+
+      let shifts = [];
+      let coverageOk = true;
+      if (!plan.closed) {
+        const chosenIds = new Set(plan.present.map((e) => e.id));
+        const workers = plan.present.map((e) => ({
+          emp: e,
+          windows: windowsPerDate[e.id][d.date],
+          target: weekTargets[e.id][d.date] ?? config.shifts.min_day_minutes,
+          isOrder: plan.orderEmpId === e.id,
+          openScore: tracker.fairnessScore(e, 'openings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.2,
+          closeScore: tracker.fairnessScore(e, 'closings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.2,
+        }));
+        const extra = ctx.employees
+          .filter((e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0)
+          .map((e) => ({ emp: e, windows: windowsPerDate[e.id][d.date] }));
+
+        const res = buildDayShifts(config, dayMeta, workers, extra, rng);
+        shifts = res.shifts;
+        coverageOk = res.covered;
+        if (!res.covered && res.gap) {
+          hardIssues.push(`Couverture non assurée le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])}.`);
+        }
+        // rest entries for employees with no shift this day
+        const working = new Set(shifts.map((s) => s.employee_id));
+        for (const emp of ctx.employees) {
+          if (!working.has(emp.id)) { const r = restShift(); r.employee_id = emp.id; shifts.push(r); }
+        }
+      } else {
+        for (const emp of ctx.employees) { const r = restShift(); r.employee_id = emp.id; r.note = 'Magasin fermé'; shifts.push(r); }
+      }
+
+      daysOut.push({ ...dayMeta, events, shifts, coverage_ok: coverageOk });
     }
 
-    // per-week stats
+    // 6. per-week stats from actual output
     for (const emp of ctx.employees) {
       const pe = perEmployee[emp.id];
-      const workedThisWeek = week.days.filter((d) => empChosen[emp.id].has(d.date));
-      const sat = workedThisWeek.some((d) => d.weekday === 6) ? 1 : 0;
-      const sun = workedThisWeek.some((d) => d.weekday === 7) ? 1 : 0;
-      const weekend = sat || sun ? 1 : 0;
-      pe.contributions.weekends += weekend;
-      if (weekend) tracker.add(emp.id, 'weekends');
-      let op = 0, cl = 0, ld = 0;
+      let op = 0, cl = 0, ld = 0, worked = 0, days = 0, sat = 0, sun = 0;
       for (const d of daysOut) {
         const s = d.shifts.find((x) => x.employee_id === emp.id && !x.is_rest);
         if (!s) continue;
+        worked += s.worked_minutes; days += 1;
         if (s.is_opening) op++;
         if (s.is_closing) cl++;
         if (s.worked_minutes >= config.shifts.long_day_minutes) ld++;
+        if (d.weekday === 6) sat = 1;
+        if (d.weekday === 7) sun = 1;
+        pe.workDates.push(d.date);
+        softViolations += softCostForWorking(emp, d.date, ctx);
       }
+      const weekend = sat || sun ? 1 : 0;
+      pe.plannedMinutesByWeek[wi] = worked;
+      pe.contributions.worked_minutes += worked;
+      pe.contributions.worked_days += days;
+      pe.contributions.openings += op;
+      pe.contributions.closings += cl;
+      pe.contributions.long_days += ld;
+      pe.contributions.saturdays += sat;
+      pe.contributions.sundays += sun;
+      pe.contributions.weekends += weekend;
+      // feed the within-run equity tracker
+      tracker.add(emp.id, 'openings', op);
+      tracker.add(emp.id, 'closings', cl);
+      tracker.add(emp.id, 'saturdays', sat);
+      tracker.add(emp.id, 'sundays', sun);
+      tracker.add(emp.id, 'long_days', ld);
+      tracker.add(emp.id, 'weekends', weekend);
+      tracker.add(emp.id, 'worked_minutes', worked);
       pe.weekStats.push({
-        week_index: week.week_index,
-        week_start: week.start_date,
-        saturdays: sat,
-        sundays: sun,
-        weekends: weekend,
-        openings: op,
-        closings: cl,
-        worked_minutes: pe.plannedMinutesByWeek[wi],
-        worked_days: workedThisWeek.length,
-        long_days: ld,
+        week_index: week.week_index, week_start: week.start_date,
+        saturdays: sat, sundays: sun, weekends: weekend,
+        openings: op, closings: cl, worked_minutes: worked, worked_days: days, long_days: ld,
       });
     }
 
-    outWeeks.push({
-      week_index: week.week_index,
-      start_date: week.start_date,
-      end_date: week.end_date,
-      days: daysOut,
-    });
+    outWeeks.push({ week_index: week.week_index, start_date: week.start_date, end_date: week.end_date, days: daysOut });
   }
 
   for (const emp of ctx.employees) {
     perEmployee[emp.id].maxConsecutive = maxConsecutive(perEmployee[emp.id].workDates);
   }
 
-  return {
-    weeks: outWeeks,
-    perEmployee,
-    softViolations,
-    hardIssues: [...new Set(hardIssues)],
-  };
+  return { weeks: outWeeks, perEmployee, softViolations, hardIssues: [...new Set(hardIssues)] };
 }
 
 export function generate(ctx) {
@@ -477,10 +376,12 @@ export function generate(ctx) {
   for (let i = 0; i < n; i++) {
     const candidate = buildCandidate(ctx, 1000 + i * 7919 + (ctx.seedOffset || 0));
     const evalResult = scoreCandidate(candidate, ctx);
-    if (!best || evalResult.score > bestEval.score) {
-      best = candidate;
-      bestEval = evalResult;
-    }
+    // prefer candidates with no hard issues, then higher score
+    const better =
+      !best ||
+      (candidate.hardIssues.length === 0 && best.hardIssues.length > 0) ||
+      (candidate.hardIssues.length === best.hardIssues.length && evalResult.score > bestEval.score);
+    if (better) { best = candidate; bestEval = evalResult; }
   }
 
   const hardErrors = bestEval.alerts.filter((a) => a.level === 'error');

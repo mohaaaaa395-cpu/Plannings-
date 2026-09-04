@@ -8,6 +8,7 @@ const NAV = [
   { to: '/historique', label: 'Historique', icon: '🗂️' },
   { to: '/equipe', label: 'Équipe', icon: '👥' },
   { to: '/absences', label: 'Absences & congés', icon: '🌴' },
+  { to: '/indisponibilites', label: 'Indisponibilités', icon: '🚫' },
   { to: '/statistiques', label: 'Statistiques', icon: '📈' },
   { to: '/parametres', label: 'Paramètres', icon: '🔧' },
 ];

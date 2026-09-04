@@ -26,6 +26,14 @@ l'export Excel / impression, l'authentification et un déploiement Railway clé 
 
 ## Fonctionnalités
 
+- **Couverture continue garantie (contrainte dure)** : le magasin n'est jamais vide pendant les
+  heures d'ouverture. Le moteur construit les horaires et positionne les pauses pour qu'au moins
+  une personne soit toujours présente (une pause n'est placée que si un collègue couvre ce créneau).
+  Un indicateur visuel (🟢 / 🔴) confirme la couverture, jour par jour.
+- **Indisponibilités des salariés (contrainte dure)** : indisponibilité à une date précise ou
+  récurrente (jour de semaine), toute la journée ou sur une plage horaire (ex. 09:50–14:00). Le
+  moteur ne planifie jamais quelqu'un pendant son indisponibilité et réorganise les autres pour
+  maintenir la couverture. Section dédiée « Indisponibilités » (ajout / modification / suppression).
 - **Génération automatique sur 3 semaines** à partir d'une simple date de début. Les dates
   (semaines, mois, année, années bissextiles) sont calculées automatiquement, jamais codées en dur.
 - **Moteur d'optimisation à mémoire** : chaque planning validé est enregistré et sert
@@ -106,11 +114,11 @@ récent compte davantage).
 
 ## Schéma de la base de données
 
-Tables : `users`, `employees`, `contracts`, `availability`, `absences`, `schedules`,
-`schedule_weeks`, `schedule_days`, `schedule_shifts`, `manual_changes`, `orders`, `deliveries`,
-`equity_statistics`, `settings`.
+Tables : `users`, `employees`, `contracts`, `availability`, `absences`, `unavailabilities`,
+`schedules`, `schedule_weeks`, `schedule_days`, `schedule_shifts`, `manual_changes`, `orders`,
+`deliveries`, `equity_statistics`, `settings`.
 
-Voir `server/src/migrations/001_init.sql`. Les migrations sont **idempotentes** et exécutées
+Voir `server/src/migrations/` (`001_init.sql`, `002_unavailabilities.sql`). Les migrations sont **idempotentes** et exécutées
 automatiquement au démarrage ; le seed initial n'insère les données que si les tables sont vides,
 donc les données **survivent** aux redéploiements et redémarrages.
 

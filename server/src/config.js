@@ -20,7 +20,12 @@ export const DEFAULT_CONFIG = {
   coverage: {
     min_opening: 1, // people who must cover opening each day
     min_closing: 1, // people who must cover closing each day
-    require_continuous: false, // if true, penalise midday coverage gaps
+    // HARD RULE: the store must never be empty during opening hours.
+    // The generator guarantees continuous coverage by construction; breaks
+    // are only placed when another employee is present.
+    require_continuous: true,
+    // Shortest usable presence/break segment (avoids tiny slivers).
+    min_segment_minutes: 30,
   },
   shifts: {
     // Break inserted (unpaid) when a worked span is long.

@@ -10,6 +10,7 @@ import Generate from './pages/Generate.jsx';
 import ScheduleView from './pages/ScheduleView.jsx';
 import History from './pages/History.jsx';
 import Absences from './pages/Absences.jsx';
+import Unavailabilities from './pages/Unavailabilities.jsx';
 import Team from './pages/Team.jsx';
 import Statistics from './pages/Statistics.jsx';
 import Settings from './pages/Settings.jsx';
@@ -40,6 +41,7 @@ function Root() {
             <Route path="planning/:id" element={<ScheduleView />} />
             <Route path="historique" element={<History />} />
             <Route path="absences" element={<Absences />} />
+            <Route path="indisponibilites" element={<Unavailabilities />} />
             <Route path="equipe" element={<Team />} />
             <Route path="statistiques" element={<Statistics />} />
             <Route path="parametres" element={<Settings />} />

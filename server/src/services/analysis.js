@@ -1,4 +1,5 @@
 import { formatDuration, shiftMinutes, toMinutes } from '../time.js';
+import { verifyCoverage } from '../engine/coverage.js';
 
 // ============================================================
 // Analyse a stored (nested) schedule: per-employee stats, coverage
@@ -30,6 +31,7 @@ export function analyzeSchedule(schedule, employees, config) {
   const alerts = [];
   const checks = {
     contracts: true,
+    coverage: true,
     openings: true,
     closings: true,
     order: true,
@@ -45,6 +47,23 @@ export function analyzeSchedule(schedule, employees, config) {
       const working = (day.shifts || []).filter((s) => !s.is_rest);
       const openers = working.filter((s) => s.is_opening);
       const closers = working.filter((s) => s.is_closing);
+
+      // Continuous coverage indicator (store never empty)
+      const open = toMinutes(day.open_time);
+      const close = toMinutes(day.close_time);
+      const cov = verifyCoverage(working, open, close);
+      day.coverage_ok = cov.covered;
+      if (!cov.covered) {
+        checks.coverage = false;
+        for (const g of cov.gaps) {
+          alerts.push({
+            level: 'error',
+            type: 'coverage_gap',
+            date: day.date,
+            message: `⚠ Magasin sans personnel le ${day.date} (créneau non couvert)`,
+          });
+        }
+      }
 
       if (openers.length < config.coverage.min_opening) {
         checks.openings = false;
@@ -118,6 +137,7 @@ export function analyzeSchedule(schedule, employees, config) {
   // success confirmations
   const ok = [];
   if (checks.contracts) ok.push({ level: 'ok', message: '✓ Contrats respectés' });
+  if (checks.coverage) ok.push({ level: 'ok', message: '✓ Magasin couvert en continu' });
   if (checks.openings) ok.push({ level: 'ok', message: '✓ Ouvertures assurées' });
   if (checks.closings) ok.push({ level: 'ok', message: '✓ Fermetures assurées' });
   if (checks.order) ok.push({ level: 'ok', message: '✓ Commande du mardi assurée' });

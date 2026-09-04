@@ -46,6 +46,12 @@ export const api = {
   updateAbsence: (id, a) => request('PUT', `/absences/${id}`, a),
   deleteAbsence: (id) => request('DELETE', `/absences/${id}`),
 
+  // unavailabilities
+  unavailabilities: () => request('GET', '/unavailabilities'),
+  createUnavailability: (u) => request('POST', '/unavailabilities', u),
+  updateUnavailability: (id, u) => request('PUT', `/unavailabilities/${id}`, u),
+  deleteUnavailability: (id) => request('DELETE', `/unavailabilities/${id}`),
+
   // schedules
   previewDates: (start) => request('GET', `/schedules/preview-dates?start_date=${start}`),
   generate: (start_date, label) => request('POST', '/schedules/generate', { start_date, label }),

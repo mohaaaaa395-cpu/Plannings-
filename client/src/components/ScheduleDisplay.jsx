@@ -10,6 +10,27 @@ function eventTags(day) {
   return tags;
 }
 
+// Find an unavailability matching an employee on a given day.
+function findUnav(unavailabilities, empId, date, weekday) {
+  return (unavailabilities || []).find(
+    (u) =>
+      u.employee_id === empId &&
+      ((u.date && String(u.date).slice(0, 10) === date) || (u.weekday && u.weekday === weekday))
+  );
+}
+function unavLabel(u) {
+  if (!u) return null;
+  return u.all_day ? 'Indisponible' : `Indispo ${u.start_time}–${u.end_time}`;
+}
+
+function CoverageBadge({ week }) {
+  const open = (week.days || []).filter((d) => (d.shifts || []).some((s) => !s.is_rest));
+  const bad = open.filter((d) => d.coverage_ok === false);
+  if (open.length === 0) return null;
+  if (bad.length === 0) return <span className="badge badge--success">🟢 Couverture assurée</span>;
+  return <span className="badge badge--danger">🔴 {bad.length} jour(s) sans couverture</span>;
+}
+
 function ShiftCell({ shift }) {
   if (!shift || shift.is_rest) return <span className="rest">Repos</span>;
   const segs = [];
@@ -19,7 +40,7 @@ function ShiftCell({ shift }) {
 }
 
 // Per-employee weekly table: JOUR | MATIN | APRÈS-MIDI | TOTAL
-function EmployeeWeekTable({ week, emp, contractMinutes, editable, onEdit }) {
+function EmployeeWeekTable({ week, emp, contractMinutes, editable, onEdit, unavailabilities }) {
   let total = 0;
   return (
     <div className="emp-schedule">
@@ -45,11 +66,13 @@ function EmployeeWeekTable({ week, emp, contractMinutes, editable, onEdit }) {
             const mins = shiftMinutes(shift);
             total += mins;
             const rowClass = day.weekday === 7 ? 'is-sunday' : day.weekday === 6 ? 'is-weekend' : '';
+            const unav = findUnav(unavailabilities, emp.id, day.date, day.weekday);
             return (
               <tr key={day.date} className={rowClass}>
                 <td className="day-name">
                   {frDay(day.weekday)} {frShortDate(day.date)}
                   <div>{eventTags(day)}</div>
+                  {unav && <div><span className="badge badge--danger">🚫 {unavLabel(unav)}</span></div>}
                   {shift && !shift.is_rest && (
                     <div>
                       {shift.is_opening && <span className="role-tag">🔑 Ouverture </span>}
@@ -158,13 +181,28 @@ function OverviewGrid({ week, employees }) {
               </tr>
             );
           })}
+          <tr>
+            <td className="empname">Couverture</td>
+            {week.days.map((d) => {
+              const anyOpen = (d.shifts || []).some((s) => !s.is_rest);
+              return (
+                <td key={d.date}>
+                  {!anyOpen ? <span className="muted">—</span>
+                    : d.coverage_ok === false
+                      ? <span title="Créneau non couvert">🔴</span>
+                      : <span title="Magasin couvert en continu">🟢</span>}
+                </td>
+              );
+            })}
+            <td></td>
+          </tr>
         </tbody>
       </table>
     </div>
   );
 }
 
-export default function ScheduleDisplay({ schedule, employees, editable = false, onShiftSaved }) {
+export default function ScheduleDisplay({ schedule, employees, editable = false, onShiftSaved, unavailabilities = [] }) {
   const [view, setView] = useState('week'); // week | global | employee
   const [empFilter, setEmpFilter] = useState(employees[0]?.id || null);
   const [editing, setEditing] = useState(null); // {day, shift}
@@ -212,6 +250,8 @@ export default function ScheduleDisplay({ schedule, employees, editable = false,
             <span className="range">
               du {frLongDate(week.start_date)} au {frLongDate(week.end_date)}
             </span>
+            <span className="spacer" />
+            <CoverageBadge week={week} />
           </div>
 
           {view === 'global' && <OverviewGrid week={week} employees={employees} />}
@@ -224,6 +264,7 @@ export default function ScheduleDisplay({ schedule, employees, editable = false,
                 contractMinutes={contractById[emp.id]}
                 editable={editable}
                 onEdit={handleEdit}
+                unavailabilities={unavailabilities}
               />
             ))}
           {view === 'employee' && empFilter && (
@@ -233,6 +274,7 @@ export default function ScheduleDisplay({ schedule, employees, editable = false,
               contractMinutes={contractById[empFilter]}
               editable={editable}
               onEdit={handleEdit}
+              unavailabilities={unavailabilities}
             />
           )}
         </div>

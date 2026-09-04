@@ -7,6 +7,7 @@ import { frLongDate } from '../lib/format.js';
 
 const CHECK_LABELS = {
   contracts: 'Contrats',
+  coverage: 'Couverture continue',
   openings: 'Ouvertures',
   closings: 'Fermetures',
   order: 'Commande mardi',
@@ -20,6 +21,7 @@ export default function ScheduleView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [unavailabilities, setUnavailabilities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -29,6 +31,7 @@ export default function ScheduleView() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.unavailabilities().then(setUnavailabilities).catch(() => {}); }, []);
 
   if (loading) return <div className="loading">Chargement du planning…</div>;
   if (!data || !data.schedule) return <div className="card empty">Planning introuvable.</div>;
@@ -131,6 +134,7 @@ export default function ScheduleView() {
           employees={employees}
           editable={schedule.status !== 'archived'}
           onShiftSaved={onShiftSaved}
+          unavailabilities={unavailabilities}
         />
       </div>
     </div>

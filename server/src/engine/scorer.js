@@ -1,4 +1,6 @@
-import { formatDuration } from '../time.js';
+import { formatDuration, toMinutes } from '../time.js';
+import { verifyCoverage } from './coverage.js';
+import { dayBounds } from './shifts.js';
 
 // ============================================================
 // Candidate scorer.
@@ -94,14 +96,20 @@ export function scoreCandidate(candidate, ctx) {
           });
         }
       }
-      // Continuity (optional)
-      if (config.coverage.require_continuous && working.length > 0) {
-        // crude gap check: is anyone present during the break window?
-        const anyThroughBreak = working.some(
-          (s) => s.morning_end && s.afternoon_start && s.morning_end !== s.afternoon_start
-        );
-        if (!anyThroughBreak && working.length === 1) {
-          add('coverage_gap', W.coverage_gap);
+      // Continuous coverage: the store must never be empty.
+      if (config.coverage.require_continuous) {
+        const { open, close } = dayBounds(config, day.is_sunday);
+        const { covered, gaps } = verifyCoverage(working, open, close);
+        if (!covered) {
+          add('coverage_gap', W.coverage_gap * gaps.length * 5);
+          for (const g of gaps) {
+            alerts.push({
+              level: 'error',
+              type: 'coverage_gap',
+              date: day.date,
+              message: `Magasin sans personnel le ${day.date} (créneau non couvert)`,
+            });
+          }
         }
       }
     }

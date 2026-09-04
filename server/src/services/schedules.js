@@ -52,13 +52,24 @@ export async function loadAbsences() {
   return byEmp;
 }
 
+export async function loadUnavailabilities() {
+  const { rows } = await query(`SELECT * FROM unavailabilities`);
+  const byEmp = {};
+  for (const u of rows) {
+    if (!byEmp[u.employee_id]) byEmp[u.employee_id] = [];
+    byEmp[u.employee_id].push(u);
+  }
+  return byEmp;
+}
+
 export async function buildContext(startDate) {
   const config = await loadConfig();
   const employees = await loadEmployees(startDate);
   const absencesByEmp = await loadAbsences();
+  const unavailabilitiesByEmp = await loadUnavailabilities();
   const weeks = buildThreeWeeks(startDate);
   const { weighted } = await loadHistory(config, startDate);
-  return { config, employees, absencesByEmp, weeks, weightedHistory: weighted };
+  return { config, employees, absencesByEmp, unavailabilitiesByEmp, weeks, weightedHistory: weighted };
 }
 
 // Generate and (if feasible) persist a draft schedule.

@@ -13,6 +13,7 @@ import { seed } from './seed.js';
 import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employees.js';
 import absenceRoutes from './routes/absences.js';
+import unavailabilityRoutes from './routes/unavailabilities.js';
 import scheduleRoutes from './routes/schedules.js';
 import settingsRoutes from './routes/settings.js';
 import statsRoutes from './routes/stats.js';
@@ -38,6 +39,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/absences', absenceRoutes);
+app.use('/api/unavailabilities', unavailabilityRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stats', statsRoutes);
