@@ -17,6 +17,7 @@ export function analyzeSchedule(schedule, employees, config) {
       name: e.name,
       contract_minutes: e.contract_minutes,
       planned_by_week: [0, 0, 0],
+      worked_days_by_week: [0, 0, 0],
       planned_total: 0,
       saturdays: 0,
       sundays: 0,
@@ -31,6 +32,7 @@ export function analyzeSchedule(schedule, employees, config) {
   const alerts = [];
   const checks = {
     contracts: true,
+    rest: true,
     coverage: true,
     openings: true,
     closings: true,
@@ -101,6 +103,7 @@ export function analyzeSchedule(schedule, employees, config) {
         pe.planned_by_week[wi] += mins;
         pe.planned_total += mins;
         pe.worked_days += 1;
+        pe.worked_days_by_week[wi] += 1;
         if (s.is_opening) pe.openings += 1;
         if (s.is_closing) pe.closings += 1;
         if (day.weekday === 6) pe.saturdays += 1;
@@ -134,9 +137,24 @@ export function analyzeSchedule(schedule, employees, config) {
     }
   }
 
+  // rest days (hard rule): each employee must keep the guaranteed rest days
+  const minRest = config.rest?.min_days_per_week ?? 0;
+  const maxWork = (config.store.open_days.length || 7) - minRest;
+  if (minRest > 0) {
+    for (const e of employees) {
+      const pe = perEmployee[e.id];
+      if (pe.worked_days_by_week.some((n) => n > maxWork)) {
+        checks.rest = false;
+        alerts.push({ level: 'warn', type: 'rest', employee_id: e.id,
+          message: `⚠ ${e.name} n'a pas ${minRest} jour(s) de repos sur une semaine` });
+      }
+    }
+  }
+
   // success confirmations
   const ok = [];
   if (checks.contracts) ok.push({ level: 'ok', message: '✓ Contrats respectés' });
+  if (minRest > 0 && checks.rest) ok.push({ level: 'ok', message: `✓ ${minRest} jours de repos respectés` });
   if (checks.coverage) ok.push({ level: 'ok', message: '✓ Magasin couvert en continu' });
   if (checks.openings) ok.push({ level: 'ok', message: '✓ Ouvertures assurées' });
   if (checks.closings) ok.push({ level: 'ok', message: '✓ Fermetures assurées' });

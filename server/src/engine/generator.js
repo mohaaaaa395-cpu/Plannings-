@@ -107,11 +107,25 @@ function pickLowest(list, scoreFn) {
   return best;
 }
 
+// Minimum rest days per week for an employee (per-employee override wins).
+function minRestFor(emp, config) {
+  const p = emp.preferences && emp.preferences.min_rest_days;
+  if (p != null) return p;
+  return config.rest && config.rest.min_days_per_week != null ? config.rest.min_days_per_week : 0;
+}
+// Maximum working days per week (hard cap) = week length - guaranteed rest,
+// never more than the days the employee is actually available.
+function workCapFor(emp, availCount, config) {
+  const weekDays = config.store.open_days.length || 7;
+  const cap = weekDays - minRestFor(emp, config);
+  return Math.min(availCount, Math.max(1, cap));
+}
+
 function chooseWorkingDayCount(emp, dates, config) {
   if (dates.length === 0) return 0;
   const maxNonFull = 480;
   const kMin = Math.max(1, Math.ceil(emp.contract_minutes / maxNonFull));
-  return Math.min(dates.length, kMin);
+  return Math.min(dates.length, kMin, workCapFor(emp, dates.length, config));
 }
 
 function pickWorkingDays(emp, dates, k, tracker, rng, ctx) {
@@ -215,25 +229,36 @@ function buildCandidate(ctx, seed) {
   for (let wi = 0; wi < ctx.weeks.weeks.length; wi++) {
     const week = ctx.weeks.weeks[wi];
 
-    // 1. choose working days per employee
+    // 1. choose working days per employee (respecting the rest-day cap)
     const empChosen = {};
+    const cap = {};
+    const workSet = {};
     for (const emp of ctx.employees) {
       const dates = availPerWeek[emp.id][wi];
+      cap[emp.id] = workCapFor(emp, dates.length, config);
       const k = chooseWorkingDayCount(emp, dates, config);
       empChosen[emp.id] = new Set(pickWorkingDays(emp, dates, k, tracker, rng, ctx));
+      workSet[emp.id] = new Set(empChosen[emp.id]);
     }
+    const underCap = (e, date) => workSet[e.id].has(date) || workSet[e.id].size < cap[e.id];
 
-    // 2. presence per date + ensure at least one worker
+    // 2. presence per date + ensure at least one worker (without breaking rest)
     const dayPlan = {};
     for (const d of week.days) {
       if (!config.store.open_days.includes(d.weekday)) { dayPlan[d.date] = { closed: true }; continue; }
       const present = ctx.employees.filter((e) => empChosen[e.id].has(d.date));
       dayPlan[d.date] = { present, orderEmpId: null };
       if (present.length === 0) {
-        const avail = ctx.employees.filter((e) => availOn(e, d.date));
-        if (avail.length === 0) { hardIssues.push(`Aucun salarié disponible le ${d.date}.`); continue; }
+        const avail = ctx.employees.filter((e) => availOn(e, d.date) && workSet[e.id].size < cap[e.id]);
+        if (avail.length === 0) {
+          const anyAvail = ctx.employees.some((e) => availOn(e, d.date));
+          hardIssues.push(anyAvail
+            ? `Impossible de couvrir le ${d.date} sans qu'un salarié dépasse ses jours de repos.`
+            : `Aucun salarié disponible le ${d.date}.`);
+          continue;
+        }
         const chosen = pickLowest(avail, (e) => perEmployee[e.id].plannedMinutesByWeek[wi] + rng() * 30);
-        empChosen[chosen.id].add(d.date);
+        empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date);
         present.push(chosen);
       }
     }
@@ -245,10 +270,12 @@ function buildCandidate(ctx, seed) {
       if (d.weekday !== config.order.weekday) continue;
       let mgr = plan.present.find((e) => e.is_order_manager && canDoOrder(e, d.date, ctx));
       if (!mgr && config.order.require_manager) {
-        const mgrAvail = ctx.employees.filter((e) => e.is_order_manager && canDoOrder(e, d.date, ctx));
-        if (mgrAvail.length === 0) { hardIssues.push(`Aucun responsable disponible le mardi ${d.date} pour la commande.`); continue; }
+        const mgrAvail = ctx.employees.filter(
+          (e) => e.is_order_manager && canDoOrder(e, d.date, ctx) && underCap(e, d.date)
+        );
+        if (mgrAvail.length === 0) { hardIssues.push(`Aucun responsable disponible le mardi ${d.date} pour la commande (jours de repos).`); continue; }
         mgr = pickLowest(mgrAvail, (e) => tracker.get(e.id, 'worked_minutes') / 1000 + rng());
-        empChosen[mgr.id].add(d.date);
+        empChosen[mgr.id].add(d.date); workSet[mgr.id].add(d.date);
         plan.present.push(mgr);
       }
       if (mgr) plan.orderEmpId = mgr.id;
@@ -292,14 +319,20 @@ function buildCandidate(ctx, seed) {
           closeScore: tracker.fairnessScore(e, 'closings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.2,
         }));
         const extra = ctx.employees
-          .filter((e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0)
+          .filter((e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0 && workSet[e.id].size < cap[e.id])
           .map((e) => ({ emp: e, windows: windowsPerDate[e.id][d.date] }));
 
         const res = buildDayShifts(config, dayMeta, workers, extra, rng);
         shifts = res.shifts;
         coverageOk = res.covered;
+        for (const id of res.addedEmpIds || []) { if (workSet[id]) workSet[id].add(d.date); }
         if (!res.covered && res.gap) {
-          hardIssues.push(`Couverture non assurée le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])}.`);
+          const blockedByRest = ctx.employees.some(
+            (e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0 && workSet[e.id].size >= cap[e.id]
+          );
+          hardIssues.push(blockedByRest
+            ? `Impossible de couvrir le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])} sans qu'un salarié dépasse ses jours de repos (min ${config.rest?.min_days_per_week ?? 0}).`
+            : `Couverture non assurée le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])}.`);
         }
         // rest entries for employees with no shift this day
         const working = new Set(shifts.map((s) => s.employee_id));

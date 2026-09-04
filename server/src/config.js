@@ -53,6 +53,14 @@ export const DEFAULT_CONFIG = {
     saturday_ratio: 0.55,
     sunday_ratio: 0.45,
   },
+  rest: {
+    // HARD RULE: guaranteed rest days per week (per employee, over the
+    // 7-day week). 2 => an employee works at most 5 days a week. If honouring
+    // this makes continuous coverage impossible, the generator reports it
+    // instead of overworking someone. Can be overridden per employee via
+    // employees.preferences.min_rest_days.
+    min_days_per_week: 2,
+  },
   rotation: {
     // How many weeks of history to weight for equity (0 = all history).
     history_weeks: 12,

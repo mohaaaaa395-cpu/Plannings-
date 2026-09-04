@@ -11,7 +11,7 @@
     "seed": "cd server && npm run seed",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "test": "cd server && node test/engine.test.mjs && node test/coverage.test.mjs"
+    "test": "cd server && node test/engine.test.mjs && node test/coverage.test.mjs && node test/rest.test.mjs"
   },
   "engines": {
     "node": ">=20"

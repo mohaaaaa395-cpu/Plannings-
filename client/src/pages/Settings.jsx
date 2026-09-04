@@ -179,6 +179,13 @@ export default function Settings() {
       </div>
 
       <div className="card">
+        <h2>Repos</h2>
+        <div className="form-row">
+          <Num {...p} path={['rest', 'min_days_per_week']} label="Jours de repos garantis / semaine" hint="Contrainte dure : 2 = maximum 5 jours travaillés" />
+        </div>
+      </div>
+
+      <div className="card">
         <h2>Rotation & équité</h2>
         <div className="form-row">
           <Num {...p} path={['rotation', 'history_weeks']} label="Semaines d'historique pondérées" hint="0 = tout l'historique" />

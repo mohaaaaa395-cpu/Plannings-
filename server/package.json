@@ -9,7 +9,7 @@
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
     "dev": "node --watch src/index.js",
-    "test": "node test/engine.test.mjs && node test/coverage.test.mjs"
+    "test": "node test/engine.test.mjs && node test/coverage.test.mjs && node test/rest.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
