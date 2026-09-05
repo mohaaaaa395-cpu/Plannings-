@@ -8,6 +8,20 @@ import { verifyCoverage } from '../engine/coverage.js';
 // computed from the actually stored shifts (so manual edits count).
 // ============================================================
 
+// Longest run of consecutive calendar days in a list of "YYYY-MM-DD" strings.
+function longestRun(dates) {
+  const sorted = [...new Set(dates)].sort();
+  if (!sorted.length) return 0;
+  let max = 1;
+  let run = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = new Date(sorted[i - 1] + 'T00:00:00Z').getTime();
+    const cur = new Date(sorted[i] + 'T00:00:00Z').getTime();
+    if (cur - prev === 86400000) { run++; max = Math.max(max, run); } else { run = 1; }
+  }
+  return max;
+}
+
 export function analyzeSchedule(schedule, employees, config) {
   const empById = Object.fromEntries(employees.map((e) => [e.id, e]));
   const perEmployee = {};
@@ -18,6 +32,7 @@ export function analyzeSchedule(schedule, employees, config) {
       contract_minutes: e.contract_minutes,
       planned_by_week: [0, 0, 0],
       worked_days_by_week: [0, 0, 0],
+      worked_dates: [],
       planned_total: 0,
       saturdays: 0,
       sundays: 0,
@@ -33,6 +48,7 @@ export function analyzeSchedule(schedule, employees, config) {
   const checks = {
     contracts: true,
     rest: true,
+    consecutive: true,
     coverage: true,
     openings: true,
     closings: true,
@@ -104,6 +120,7 @@ export function analyzeSchedule(schedule, employees, config) {
         pe.planned_total += mins;
         pe.worked_days += 1;
         pe.worked_days_by_week[wi] += 1;
+        pe.worked_dates.push(day.date);
         if (s.is_opening) pe.openings += 1;
         if (s.is_closing) pe.closings += 1;
         if (day.weekday === 6) pe.saturdays += 1;
@@ -151,10 +168,24 @@ export function analyzeSchedule(schedule, employees, config) {
     }
   }
 
+  // consecutive-day limit (hard rule) across the whole window
+  const maxConsec = config.rest?.max_consecutive_days ?? 0;
+  if (maxConsec > 0) {
+    for (const e of employees) {
+      const run = longestRun(perEmployee[e.id].worked_dates);
+      if (run > maxConsec) {
+        checks.consecutive = false;
+        alerts.push({ level: 'warn', type: 'consecutive', employee_id: e.id,
+          message: `⚠ ${e.name} enchaîne ${run} jours consécutifs (max ${maxConsec})` });
+      }
+    }
+  }
+
   // success confirmations
   const ok = [];
   if (checks.contracts) ok.push({ level: 'ok', message: '✓ Contrats respectés' });
   if (minRest > 0 && checks.rest) ok.push({ level: 'ok', message: `✓ ${minRest} jours de repos respectés` });
+  if (maxConsec > 0 && checks.consecutive) ok.push({ level: 'ok', message: `✓ Jamais plus de ${maxConsec} jours consécutifs` });
   if (checks.coverage) ok.push({ level: 'ok', message: '✓ Magasin couvert en continu' });
   if (checks.openings) ok.push({ level: 'ok', message: '✓ Ouvertures assurées' });
   if (checks.closings) ok.push({ level: 'ok', message: '✓ Fermetures assurées' });

@@ -71,11 +71,41 @@ check('feasible = false', () => assert.equal(rc.feasible, false));
 check('raison mentionne le repos', () =>
   assert.ok(rc.reasons.join(' ').toLowerCase().includes('repos'), rc.reasons.join(' | ')));
 
-console.log('Désactivation possible (0 repos => comportement précédent):');
+console.log('Désactivation possible (0 repos + 0 consécutif => comportement précédent):');
 const cfg0 = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 cfg0.rest.min_days_per_week = 0;
+cfg0.rest.max_consecutive_days = 0;
 const r0 = generate(makeCtx(team(), { 2: allWeek, 3: allWeek, 4: [{ weekday: 6, all_day: true }] }, '2026-09-07', cfg0));
 check('feasible sans contrainte de repos', () => assert.equal(r0.feasible, true));
+
+console.log('Jours consécutifs (max 5, jointures de semaines comprises):');
+function longestRun(dates) {
+  const s = [...new Set(dates)].sort();
+  if (!s.length) return 0;
+  let mx = 1, run = 1;
+  for (let i = 1; i < s.length; i++) {
+    const p = new Date(s[i - 1] + 'T00:00:00Z').getTime(), c = new Date(s[i] + 'T00:00:00Z').getTime();
+    if (c - p === 86400000) { run++; mx = Math.max(mx, run); } else run = 1;
+  }
+  return mx;
+}
+function datesByEmp(result) {
+  const m = {};
+  for (const wk of result.best.weeks) for (const day of wk.days) for (const s of day.shifts) {
+    if (s.is_rest) continue;
+    (m[s.employee_id] = m[s.employee_id] || []).push(day.date);
+  }
+  return m;
+}
+const rr = generate(makeCtx());
+check('feasible', () => assert.equal(rr.feasible, true));
+check('aucun salarié ne dépasse 5 jours consécutifs sur les 3 semaines', () => {
+  const m = datesByEmp(rr);
+  for (const [id, ds] of Object.entries(m)) {
+    const r = longestRun(ds);
+    assert.ok(r <= 5, `salarié ${id} => ${r} jours consécutifs`);
+  }
+});
 
 console.log(`\n${failures === 0 ? 'ALL PASSED' : failures + ' FAILURES'}`);
 process.exit(failures === 0 ? 0 : 1);

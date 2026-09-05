@@ -8,6 +8,7 @@ import { frLongDate } from '../lib/format.js';
 const CHECK_LABELS = {
   contracts: 'Contrats',
   rest: 'Jours de repos',
+  consecutive: 'Jours consécutifs',
   coverage: 'Couverture continue',
   openings: 'Ouvertures',
   closings: 'Fermetures',

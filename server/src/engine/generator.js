@@ -1,4 +1,4 @@
-import { isoWeekday, isSunday as dateIsSunday, isSaturday } from '../dates.js';
+import { isoWeekday, isSunday as dateIsSunday, isSaturday, addDays, formatDate } from '../dates.js';
 import { restShift, maxDayMinutes, dayBounds } from './shifts.js';
 import { EquityTracker, capacityFor } from './equity.js';
 import { scoreCandidate } from './scorer.js';
@@ -128,8 +128,22 @@ function chooseWorkingDayCount(emp, dates, config) {
   return Math.min(dates.length, kMin, workCapFor(emp, dates.length, config));
 }
 
-function pickWorkingDays(emp, dates, k, tracker, rng, ctx) {
-  if (k >= dates.length) return [...dates];
+function shiftDate(date, delta) { return formatDate(addDays(date, delta)); }
+// Would adding `date` to `set` keep the consecutive-working-day run <= max?
+function runOk(set, date, max) {
+  if (!max || max <= 0) return true;
+  let len = 1;
+  let cur = date;
+  for (;;) { cur = shiftDate(cur, -1); if (set.has(cur)) len++; else break; }
+  cur = date;
+  for (;;) { cur = shiftDate(cur, 1); if (set.has(cur)) len++; else break; }
+  return len <= max;
+}
+
+// Pick working days for the week — equity/random biased, but never creating a
+// consecutive run longer than maxConsec (checked against days already assigned
+// in previous weeks + the ones picked here).
+function pickWorkingDays(emp, dates, k, tracker, rng, ctx, priorSet, maxConsec) {
   const scored = dates.map((date) => {
     const wd = isoWeekday(date);
     let s = rng();
@@ -139,7 +153,15 @@ function pickWorkingDays(emp, dates, k, tracker, rng, ctx) {
     return { date, s };
   });
   scored.sort((a, b) => a.s - b.s);
-  return scored.slice(0, k).map((x) => x.date);
+  const acc = new Set(priorSet || []);
+  const chosen = [];
+  for (const { date } of scored) {
+    if (chosen.length >= k) break;
+    if (!runOk(acc, date, maxConsec)) continue;
+    chosen.push(date);
+    acc.add(date);
+  }
+  return chosen;
 }
 
 // Distribute an employee's weekly contract across chosen days (hints only;
@@ -183,6 +205,11 @@ function buildCandidate(ctx, seed) {
   const rng = mulberry32(seed);
   const { config } = ctx;
   const tracker = new EquityTracker(ctx.employees, ctx.weightedHistory);
+  const maxConsec = config.rest?.max_consecutive_days ?? 0;
+  // Days each employee is assigned across the WHOLE 3-week window (for the
+  // continuous consecutive-day limit, which spans week boundaries).
+  const assignedAll = {};
+  for (const emp of ctx.employees) assignedAll[emp.id] = new Set();
 
   // precompute windows per employee per date
   const windowsPerDate = {};
@@ -229,7 +256,7 @@ function buildCandidate(ctx, seed) {
   for (let wi = 0; wi < ctx.weeks.weeks.length; wi++) {
     const week = ctx.weeks.weeks[wi];
 
-    // 1. choose working days per employee (respecting the rest-day cap)
+    // 1. choose working days per employee (rest cap + consecutive-day limit)
     const empChosen = {};
     const cap = {};
     const workSet = {};
@@ -237,28 +264,31 @@ function buildCandidate(ctx, seed) {
       const dates = availPerWeek[emp.id][wi];
       cap[emp.id] = workCapFor(emp, dates.length, config);
       const k = chooseWorkingDayCount(emp, dates, config);
-      empChosen[emp.id] = new Set(pickWorkingDays(emp, dates, k, tracker, rng, ctx));
-      workSet[emp.id] = new Set(empChosen[emp.id]);
+      const chosen = pickWorkingDays(emp, dates, k, tracker, rng, ctx, assignedAll[emp.id], maxConsec);
+      empChosen[emp.id] = new Set(chosen);
+      workSet[emp.id] = new Set(chosen);
+      for (const d of chosen) assignedAll[emp.id].add(d);
     }
     const underCap = (e, date) => workSet[e.id].has(date) || workSet[e.id].size < cap[e.id];
+    const consecOk = (e, date) => workSet[e.id].has(date) || runOk(assignedAll[e.id], date, maxConsec);
 
-    // 2. presence per date + ensure at least one worker (without breaking rest)
+    // 2. presence per date + ensure at least one worker (within all limits)
     const dayPlan = {};
     for (const d of week.days) {
       if (!config.store.open_days.includes(d.weekday)) { dayPlan[d.date] = { closed: true }; continue; }
       const present = ctx.employees.filter((e) => empChosen[e.id].has(d.date));
       dayPlan[d.date] = { present, orderEmpId: null };
       if (present.length === 0) {
-        const avail = ctx.employees.filter((e) => availOn(e, d.date) && workSet[e.id].size < cap[e.id]);
+        const avail = ctx.employees.filter((e) => availOn(e, d.date) && workSet[e.id].size < cap[e.id] && consecOk(e, d.date));
         if (avail.length === 0) {
           const anyAvail = ctx.employees.some((e) => availOn(e, d.date));
           hardIssues.push(anyAvail
-            ? `Impossible de couvrir le ${d.date} sans qu'un salarié dépasse ses jours de repos.`
+            ? `Impossible de couvrir le ${d.date} sans dépasser les limites de repos / jours consécutifs.`
             : `Aucun salarié disponible le ${d.date}.`);
           continue;
         }
         const chosen = pickLowest(avail, (e) => perEmployee[e.id].plannedMinutesByWeek[wi] + rng() * 30);
-        empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date);
+        empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date); assignedAll[chosen.id].add(d.date);
         present.push(chosen);
       }
     }
@@ -271,11 +301,11 @@ function buildCandidate(ctx, seed) {
       let mgr = plan.present.find((e) => e.is_order_manager && canDoOrder(e, d.date, ctx));
       if (!mgr && config.order.require_manager) {
         const mgrAvail = ctx.employees.filter(
-          (e) => e.is_order_manager && canDoOrder(e, d.date, ctx) && underCap(e, d.date)
+          (e) => e.is_order_manager && canDoOrder(e, d.date, ctx) && underCap(e, d.date) && consecOk(e, d.date)
         );
-        if (mgrAvail.length === 0) { hardIssues.push(`Aucun responsable disponible le mardi ${d.date} pour la commande (jours de repos).`); continue; }
+        if (mgrAvail.length === 0) { hardIssues.push(`Aucun responsable disponible le mardi ${d.date} pour la commande (repos / jours consécutifs).`); continue; }
         mgr = pickLowest(mgrAvail, (e) => tracker.get(e.id, 'worked_minutes') / 1000 + rng());
-        empChosen[mgr.id].add(d.date); workSet[mgr.id].add(d.date);
+        empChosen[mgr.id].add(d.date); workSet[mgr.id].add(d.date); assignedAll[mgr.id].add(d.date);
         plan.present.push(mgr);
       }
       if (mgr) plan.orderEmpId = mgr.id;
@@ -319,19 +349,20 @@ function buildCandidate(ctx, seed) {
           closeScore: tracker.fairnessScore(e, 'closings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.2,
         }));
         const extra = ctx.employees
-          .filter((e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0 && workSet[e.id].size < cap[e.id])
+          .filter((e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0 && workSet[e.id].size < cap[e.id] && consecOk(e, d.date))
           .map((e) => ({ emp: e, windows: windowsPerDate[e.id][d.date] }));
 
         const res = buildDayShifts(config, dayMeta, workers, extra, rng);
         shifts = res.shifts;
         coverageOk = res.covered;
-        for (const id of res.addedEmpIds || []) { if (workSet[id]) workSet[id].add(d.date); }
+        for (const id of res.addedEmpIds || []) { if (workSet[id]) { workSet[id].add(d.date); assignedAll[id].add(d.date); } }
         if (!res.covered && res.gap) {
-          const blockedByRest = ctx.employees.some(
-            (e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0 && workSet[e.id].size >= cap[e.id]
+          const blockedByLimit = ctx.employees.some(
+            (e) => !chosenIds.has(e.id) && windowsPerDate[e.id][d.date].length > 0 &&
+              (workSet[e.id].size >= cap[e.id] || !consecOk(e, d.date))
           );
-          hardIssues.push(blockedByRest
-            ? `Impossible de couvrir le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])} sans qu'un salarié dépasse ses jours de repos (min ${config.rest?.min_days_per_week ?? 0}).`
+          hardIssues.push(blockedByLimit
+            ? `Impossible de couvrir le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])} sans dépasser les limites de repos / jours consécutifs.`
             : `Couverture non assurée le ${d.date} de ${fromMinutes(res.gap[0])} à ${fromMinutes(res.gap[1])}.`);
         }
         // rest entries for employees with no shift this day

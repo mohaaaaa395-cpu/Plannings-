@@ -182,6 +182,7 @@ export default function Settings() {
         <h2>Repos</h2>
         <div className="form-row">
           <Num {...p} path={['rest', 'min_days_per_week']} label="Jours de repos garantis / semaine" hint="Contrainte dure : 2 = maximum 5 jours travaillés" />
+          <Num {...p} path={['rest', 'max_consecutive_days']} label="Jours consécutifs max" hint="Sur les 3 semaines, jointures comprises. 0 = désactivé" />
         </div>
       </div>
 

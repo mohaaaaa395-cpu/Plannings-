@@ -60,6 +60,9 @@ export const DEFAULT_CONFIG = {
     // instead of overworking someone. Can be overridden per employee via
     // employees.preferences.min_rest_days.
     min_days_per_week: 2,
+    // HARD RULE: maximum consecutive working days, computed continuously over
+    // the whole 3-week window (week boundaries included). 0 = disabled.
+    max_consecutive_days: 5,
   },
   rotation: {
     // How many weeks of history to weight for equity (0 = all history).
