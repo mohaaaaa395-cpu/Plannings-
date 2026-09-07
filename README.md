@@ -52,7 +52,9 @@ l'export Excel / impression, l'authentification et un déploiement Railway clé 
 - **Détection d'impossibilité** : si les contraintes ne peuvent pas être respectées, le moteur
   n'invente rien et explique précisément le problème.
 - **Impression** (feuille de style dédiée) et **export Excel** propre et professionnel.
-- **Responsive** : parfaitement utilisable sur smartphone (vues par semaine, globale, par salarié).
+- **Responsive & installable (PWA)** : parfaitement utilisable sur smartphone (vues par semaine,
+  globale, par salarié) et **« Ajouter à l'écran d'accueil »** pour l'ouvrir en plein écran comme
+  une application (manifeste + service worker + icônes, gestion des encoches iOS).
 - **Authentification** (session par cookie JWT) pour protéger les données.
 
 ## Architecture

@@ -58,3 +58,10 @@ createRoot(document.getElementById('root')).render(
     <Root />
   </React.StrictMode>
 );
+
+// Register the service worker so the app is installable on phones (PWA).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

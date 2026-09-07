@@ -267,3 +267,10 @@ table.data tr:hover td { background: var(--surface-2); }
   .week-block { page-break-inside: avoid; }
   table.planning { font-size: 10px; }
 }
+
+/* ---------- Safe areas (iPhone notch / home indicator) when installed ---------- */
+@supports (padding: max(0px)) {
+  .topbar { padding-top: max(12px, env(safe-area-inset-top)); }
+  .sidebar { padding-top: env(safe-area-inset-top); }
+  .content { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+}
