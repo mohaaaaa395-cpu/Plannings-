@@ -115,6 +115,20 @@ export function buildScheduleWorkbook(schedule, employees, config) {
       ws.getCell(r, 1).font = bold;
       if (day.events && day.events.delivery) ws.getCell(r, 2).value = 'x';
 
+      // Order-of-the-week marker (e.g. Tuesday before 12:00 by Yassine or Rose)
+      const orderShift = (day.shifts || []).find((x) => x.is_order && !x.is_rest);
+      const orderEmpId = orderShift ? orderShift.employee_id : (day.events && day.events.order_employee_id) || null;
+      const isOrderDay = !!(day.events && day.events.order);
+      if (isOrderDay) {
+        const oname = (emps.find((e) => e.id === orderEmpId) || {}).name;
+        const dl = (day.events && day.events.order_deadline) || (config.order && config.order.deadline) || '12:00';
+        const c1 = ws.getCell(r, 1);
+        c1.value = `${FR_DAYS[wd - 1]}\n📦 Commande ${dl}${oname ? ' : ' + oname : ''}`;
+        c1.alignment = { wrapText: true, vertical: 'top' };
+        c1.font = { bold: true, size: 10 };
+        ws.getRow(r).height = 30;
+      }
+
       emps.forEach((e, i) => {
         const b = groupBase(i);
         const LC = colLetter(b), LD = colLetter(b + 1), LE = colLetter(b + 2);
@@ -125,6 +139,12 @@ export function buildScheduleWorkbook(schedule, employees, config) {
           if (s.morning_end) { ws.getCell(r, b + 1).value = frac(s.morning_end); ws.getCell(r, b + 1).numFmt = HHMM; }
           if (s.afternoon_start) { ws.getCell(r, b + 3).value = frac(s.afternoon_start); ws.getCell(r, b + 3).numFmt = HHMM; }
           if (s.afternoon_end) { ws.getCell(r, b + 4).value = frac(s.afternoon_end); ws.getCell(r, b + 4).numFmt = HHMM; }
+        }
+        // highlight the morning cells of whoever handles the order that day
+        if (isOrderDay && e.id === orderEmpId) {
+          for (const col of [b, b + 1]) {
+            ws.getCell(r, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE9C8' } };
+          }
         }
         // duration helpers
         ws.getCell(r, b + 2).value = { formula: `IF(${LC}${r}="","",${LD}${r}-${LC}${r})` };
