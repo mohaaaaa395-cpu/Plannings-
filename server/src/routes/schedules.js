@@ -1,10 +1,9 @@
 import express from 'express';
-import ExcelJS from 'exceljs';
 import { query } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { loadConfig } from '../config.js';
-import { normalizeTime, formatDuration, shiftMinutes } from '../time.js';
-import { frDayName, frLongDate } from '../dates.js';
+import { normalizeTime, formatDuration } from '../time.js';
+import { buildScheduleWorkbook } from '../services/exportExcel.js';
 import {
   generateDraft,
   getScheduleFull,
@@ -149,48 +148,12 @@ router.get('/:id/export.xlsx', async (req, res) => {
   if (!schedule) return res.status(404).json({ error: 'Planning introuvable' });
   const config = await loadConfig();
   const employees = await loadEmployees(schedule.start_date);
-  const empById = Object.fromEntries(employees.map((e) => [e.id, e]));
   const analysis = analyzeSchedule(schedule, employees, config);
 
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'CEDIF Saint-Antoine';
+  // Main sheet in the store's own template layout.
+  const wb = buildScheduleWorkbook(schedule, employees, config);
 
-  for (const week of schedule.weeks) {
-    const ws = wb.addWorksheet(`Semaine ${week.week_index}`);
-    ws.columns = [
-      { header: 'Salarié', key: 'emp', width: 16 },
-      ...week.days.map((d) => ({
-        header: `${cap(frDayName(d.date))} ${d.date.slice(8, 10)}/${d.date.slice(5, 7)}`,
-        width: 22,
-      })),
-      { header: 'Total', key: 'total', width: 10 },
-    ];
-    ws.getRow(1).font = { bold: true };
-
-    for (const emp of employees) {
-      const row = { emp: emp.name };
-      let total = 0;
-      const cells = [];
-      for (const d of week.days) {
-        const s = d.shifts.find((x) => x.employee_id === emp.id);
-        if (!s || s.is_rest) {
-          cells.push('REPOS');
-        } else {
-          const parts = [];
-          if (s.morning_start) parts.push(`${s.morning_start}-${s.morning_end}`);
-          if (s.afternoon_start) parts.push(`${s.afternoon_start}-${s.afternoon_end}`);
-          const mins = shiftMinutes(s);
-          total += mins;
-          parts.push(`(${formatDuration(mins)})`);
-          cells.push(parts.join('\n'));
-        }
-      }
-      const added = ws.addRow([emp.name, ...cells, formatDuration(total)]);
-      added.alignment = { wrapText: true, vertical: 'top' };
-    }
-  }
-
-  // Summary sheet
+  // Bonus recap sheet (stats per employee).
   const sum = wb.addWorksheet('Récapitulatif');
   sum.columns = [
     { header: 'Salarié', width: 16 },
@@ -221,9 +184,5 @@ router.get('/:id/export.xlsx', async (req, res) => {
   await wb.xlsx.write(res);
   res.end();
 });
-
-function cap(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 export default router;
