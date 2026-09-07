@@ -55,14 +55,14 @@ Ouvrez l'URL publique générée par Railway et connectez-vous avec le compte ad
 
 ## 6. Migrations ultérieures
 
-Pour faire évoluer le schéma, ajoutez un fichier `server/src/migrations/002_xxx.sql`
+Pour faire évoluer le schéma, ajoutez un fichier `backend/src/migrations/003_xxx.sql`
 (numéroté, idempotent avec `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... IF NOT EXISTS`).
 Il sera appliqué automatiquement au prochain démarrage.
 
 Exécution manuelle possible :
 
 ```bash
-railway run npm --prefix server run migrate
+railway run npm --prefix backend run migrate
 ```
 
 ## 7. Sauvegarde / restauration

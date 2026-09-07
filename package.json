@@ -4,14 +4,14 @@
   "description": "Application de génération automatique de plannings — CEDIF Saint-Antoine",
   "private": true,
   "scripts": {
-    "install:all": "cd server && npm install && cd ../client && npm install",
-    "build": "cd client && npm install && npm run build",
-    "start": "cd server && node src/index.js",
-    "migrate": "cd server && npm run migrate",
-    "seed": "cd server && npm run seed",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
-    "test": "cd server && node test/engine.test.mjs && node test/coverage.test.mjs && node test/rest.test.mjs"
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && node src/index.js",
+    "migrate": "cd backend && npm run migrate",
+    "seed": "cd backend && npm run seed",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "test": "cd backend && node test/engine.test.mjs && node test/coverage.test.mjs && node test/rest.test.mjs"
   },
   "engines": {
     "node": ">=20"

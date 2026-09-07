@@ -1,5 +1,5 @@
 {
-  "name": "cedif-planning-server",
+  "name": "cedif-planning-backend",
   "version": "1.0.0",
   "description": "Backend API and scheduling engine for CEDIF Saint-Antoine",
   "type": "module",

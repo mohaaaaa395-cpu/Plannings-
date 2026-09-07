@@ -59,17 +59,17 @@ l'export Excel / impression, l'authentification et un déploiement Railway clé 
 
 ```
 Plannings-
-├── Dockerfile              # image unique (build client + run serveur)
+├── Dockerfile              # image unique (build frontend + run backend)
 ├── railway.json            # configuration de déploiement Railway
-├── client/                 # frontend React + Vite (JSX)
+├── frontend/               # frontend React + Vite (JSX)
 │   └── src/
 │       ├── pages/          # Dashboard, Generate, ScheduleView, History, Team,
-│       │                   #   Absences, Statistics, Settings, Login
+│       │                   #   Absences, Unavailabilities, Statistics, Settings, Login
 │       ├── components/      # ScheduleDisplay, ShiftEditor, Modal, Alerts
 │       ├── lib/format.js    # formatage dates / heures (FR)
 │       ├── api.js           # client HTTP
 │       └── styles.css       # design system (responsive + impression)
-└── server/                 # backend Node.js + Express + PostgreSQL
+└── backend/                # backend Node.js + Express + PostgreSQL
     └── src/
         ├── index.js         # serveur (API + service du SPA)
         ├── db.js            # pool PostgreSQL
@@ -77,18 +77,18 @@ Plannings-
         ├── seed.js          # données initiales (équipe, config, admin)
         ├── config.js        # configuration par défaut + chargement fusionné
         ├── time.js/dates.js # utilitaires heures & dates (UTC, bissextiles)
-        ├── engine/          # MOTEUR : generator, scorer, equity, shifts
-        ├── services/        # schedules (persistance), analysis, stats
-        ├── routes/          # auth, employees, absences, schedules, settings, stats
-        └── migrations/      # 001_init.sql
+        ├── engine/          # MOTEUR : generator, scorer, equity, shifts, coverage
+        ├── services/        # schedules (persistance), analysis, stats, exportExcel
+        ├── routes/          # auth, employees, absences, unavailabilities, schedules, settings, stats
+        └── migrations/      # 001_init.sql, 002_unavailabilities.sql
 ```
 
-Le serveur Express expose l'API sous `/api/*` et sert le SPA React compilé (`server/public`).
+Le backend Express expose l'API sous `/api/*` et sert le SPA React compilé (`backend/public`).
 Un seul service à déployer.
 
 ## Le moteur de génération (« cerveau »)
 
-Fichiers : `server/src/engine/`.
+Fichiers : `backend/src/engine/`.
 
 1. **Contexte** (`services/schedules.js` → `buildContext`) : charge la configuration, l'équipe et
    ses contrats, les disponibilités, les absences, calcule les 3 semaines, et charge l'**historique
@@ -118,7 +118,7 @@ Tables : `users`, `employees`, `contracts`, `availability`, `absences`, `unavail
 `schedules`, `schedule_weeks`, `schedule_days`, `schedule_shifts`, `manual_changes`, `orders`,
 `deliveries`, `equity_statistics`, `settings`.
 
-Voir `server/src/migrations/` (`001_init.sql`, `002_unavailabilities.sql`). Les migrations sont **idempotentes** et exécutées
+Voir `backend/src/migrations/` (`001_init.sql`, `002_unavailabilities.sql`). Les migrations sont **idempotentes** et exécutées
 automatiquement au démarrage ; le seed initial n'insère les données que si les tables sont vides,
 donc les données **survivent** aux redéploiements et redémarrages.
 
@@ -136,13 +136,13 @@ cp .env.example .env
 #   (pour un Postgres local, ajoutez PGSSL=disable)
 
 # 3. Backend
-cd server
+cd backend
 npm install
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cedif PGSSL=disable npm start
 #   -> migre, seed, écoute sur :8080 (ou $PORT)
 
 # 4. Frontend (dev, hot reload) dans un autre terminal
-cd client
+cd frontend
 npm install
 npm run dev            # http://localhost:5173 (proxy /api -> :8080)
 ```
@@ -152,7 +152,7 @@ Compte par défaut : **admin / cedif2026** (modifiable dans `.env` puis dans l'a
 Test du moteur (sans base) :
 
 ```bash
-cd server && node test/engine.test.mjs
+cd backend && npm test
 ```
 
 ## Déploiement sur Railway

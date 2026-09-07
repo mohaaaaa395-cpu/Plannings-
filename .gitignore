@@ -6,7 +6,7 @@ dist/
 npm-debug.log*
 .DS_Store
 coverage/
-client/dist/
-server/public/
+frontend/dist/
+backend/public/
 *.pem
 .cache/
