@@ -60,7 +60,7 @@ router.put('/:id', async (req, res) => {
   if (b.weekly_hours != null) {
     const minutes = Math.round(b.weekly_hours * 60);
     const { rows: cur } = await query(
-      `SELECT * FROM contracts WHERE employee_id=$1 ORDER BY effective_from DESC LIMIT 1`,
+      `SELECT * FROM contracts WHERE employee_id=$1 ORDER BY effective_from DESC, id DESC LIMIT 1`,
       [id]
     );
     if (!cur[0] || cur[0].weekly_minutes !== minutes) {
@@ -82,7 +82,7 @@ router.delete('/:id', async (req, res) => {
 // ---- Contract history ----
 router.get('/:id/contracts', async (req, res) => {
   const { rows } = await query(
-    `SELECT * FROM contracts WHERE employee_id=$1 ORDER BY effective_from DESC`,
+    `SELECT * FROM contracts WHERE employee_id=$1 ORDER BY effective_from DESC, id DESC`,
     [Number(req.params.id)]
   );
   res.json(rows);

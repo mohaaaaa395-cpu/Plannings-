@@ -16,7 +16,7 @@ export async function loadEmployees(atDate) {
 
   const { rows: contracts } = await query(
     `SELECT * FROM contracts WHERE employee_id = ANY($1)
-     ORDER BY employee_id, effective_from DESC`,
+     ORDER BY employee_id, effective_from DESC, id DESC`,
     [ids]
   );
   const { rows: avail } = await query(

@@ -18,7 +18,7 @@ function EmployeeForm({ emp, onClose, onSaved }) {
   const [f, setF] = useState({
     name: emp.name || '',
     position: emp.position || 'Employé(e)',
-    weekly_hours: emp.contract_minutes ? emp.contract_minutes / 60 : 35,
+    weekly_hours: String(emp.contract_minutes ? emp.contract_minutes / 60 : 35),
     has_keys: emp.has_keys ?? true,
     is_order_manager: emp.is_order_manager ?? false,
     weekend_only: emp.weekend_only ?? false,
@@ -33,8 +33,14 @@ function EmployeeForm({ emp, onClose, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      if (isNew) await api.createEmployee(f);
-      else await api.updateEmployee(emp.id, f);
+      // Parse the free-text hours field (accepts "17,5" or "17.5"); only send
+      // it when it's a valid positive number so an empty field never wipes it.
+      const wh = parseFloat(String(f.weekly_hours).replace(',', '.'));
+      const payload = { ...f };
+      if (Number.isFinite(wh) && wh > 0) payload.weekly_hours = wh;
+      else delete payload.weekly_hours;
+      if (isNew) await api.createEmployee(payload);
+      else await api.updateEmployee(emp.id, payload);
       onSaved();
       onClose();
     } finally { setBusy(false); }
@@ -58,7 +64,8 @@ function EmployeeForm({ emp, onClose, onSaved }) {
       <div className="form-row">
         <div className="field">
           <label>Contrat (heures / semaine)</label>
-          <input type="number" step="0.5" value={f.weekly_hours} onChange={(e) => set('weekly_hours', Number(e.target.value))} />
+          <input type="text" inputMode="decimal" value={f.weekly_hours}
+            onChange={(e) => set('weekly_hours', e.target.value)} placeholder="35" />
         </div>
         <div className="field"><label>Couleur</label><input type="color" value={f.color} onChange={(e) => set('color', e.target.value)} /></div>
       </div>
