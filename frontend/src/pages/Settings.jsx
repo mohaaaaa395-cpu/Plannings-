@@ -148,6 +148,25 @@ export default function Settings() {
           <Num {...p} path={['shifts', 'min_day_minutes']} label="Journée minimale (min)" />
           <Num {...p} path={['shifts', 'long_day_minutes']} label="Seuil journée longue (min)" />
         </div>
+        <div className="form-row">
+          <div className="field">
+            <label>Arrondi des horaires</label>
+            <select
+              value={cfg.shifts.round_minutes ?? 15}
+              onChange={(e) => upd(['shifts', 'round_minutes'], Number(e.target.value))}
+            >
+              <option value={0}>À la minute (aucun arrondi)</option>
+              <option value={5}>Aux 5 minutes</option>
+              <option value={10}>Aux 10 minutes</option>
+              <option value={15}>Au quart d'heure</option>
+              <option value={30}>À la demi-heure</option>
+            </select>
+            <div className="hint">
+              Cale les débuts/fins de créneaux sur une grille pour des horaires « carrés ».
+              L'ouverture, la fermeture et les indisponibilités saisies restent exactes.
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="card">

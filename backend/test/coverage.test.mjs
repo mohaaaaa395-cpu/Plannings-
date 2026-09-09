@@ -55,6 +55,27 @@ check('feasible', () => assert.equal(rA.feasible, true));
 check('couverture continue chaque jour', () => assertFullCoverage(rA));
 check('aucune alerte de couverture', () =>
   assert.equal(rA.best.alerts.filter((a) => a.type === 'coverage_gap').length, 0));
+check('horaires « carrés » (alignés sur la grille, pas de 11:07)', () => {
+  const grid = DEFAULT_CONFIG.shifts.round_minutes; // 15
+  const bornes = new Set([
+    DEFAULT_CONFIG.store.weekday_open, DEFAULT_CONFIG.store.weekday_close,
+    DEFAULT_CONFIG.store.sunday_open, DEFAULT_CONFIG.store.sunday_close,
+  ].map(toMinutes));
+  for (const w of rA.best.weeks)
+    for (const d of w.days)
+      for (const s of d.shifts) {
+        if (s.is_rest) continue;
+        for (const t of [s.morning_start, s.morning_end, s.afternoon_start, s.afternoon_end]) {
+          if (!t) continue;
+          const m = toMinutes(t);
+          // Chaque horaire est soit sur la grille, soit calé sur une borne
+          // magasin (ou décalé d'un multiple de la grille depuis une borne).
+          const alignedGrid = m % grid === 0;
+          const alignedBound = [...bornes].some((b) => (m - b) % grid === 0);
+          assert.ok(alignedGrid || alignedBound, `horaire pas carré: ${t}`);
+        }
+      }
+});
 
 console.log('Scénario "pause avec couverture" :');
 check('quand quelqu\'un a une pause, un autre couvre (pas de trou)', () => {

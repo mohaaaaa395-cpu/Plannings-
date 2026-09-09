@@ -37,6 +37,11 @@ export const DEFAULT_CONFIG = {
     min_day_minutes: 180, // 3h — shortest working day
     // A "long day" for equity/penalty purposes.
     long_day_minutes: 500, // 8h20
+    // Grille d'arrondi des horaires générés : tout début/fin de segment est
+    // calé sur ce pas (en minutes) pour éviter des horaires « pas carrés »
+    // comme 11:07. L'ouverture/fermeture du magasin et les indisponibilités
+    // saisies restent respectées à la minute exacte. 0 = désactivé.
+    round_minutes: 15,
   },
   order: {
     weekday: 2, // ISO: Tuesday

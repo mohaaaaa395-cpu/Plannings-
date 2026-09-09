@@ -125,24 +125,42 @@ function largestWindow(windows) {
   return windows.reduce((a, b) => (b[1] - b[0] > (a ? a[1] - a[0] : -1) ? b : a), null);
 }
 
-function buildBlockInWindow(win, span, prefer) {
-  const len = Math.min(span, win[1] - win[0]);
+// Round a minute value to the nearest multiple of `grid` (0 = no rounding).
+function snap(x, grid) {
+  return grid > 0 ? Math.round(x / grid) * grid : x;
+}
+
+// Build a continuous block inside a window, with all boundaries aligned to the
+// rounding grid so generated shifts read "carré" (no 11:07-style times). The
+// window bounds themselves (open/close, availability edges) are kept exact, so
+// an opener still starts exactly at the store opening even if that is not on
+// the grid; only the free end of the block snaps.
+function buildBlockInWindow(win, span, prefer, grid = 0) {
+  const winLen = win[1] - win[0];
+  let len = Math.min(span, winLen);
+  if (grid > 0) len = Math.min(winLen, Math.max(grid, snap(len, grid)));
   if (prefer === 'open') return [win[0], win[0] + len];
   if (prefer === 'close') return [win[1] - len, win[1]];
-  const s = win[0] + Math.max(0, Math.floor((win[1] - win[0] - len) / 2));
+  let s = win[0] + Math.max(0, Math.floor((winLen - len) / 2));
+  if (grid > 0) s = Math.min(Math.max(snap(s, grid), win[0]), win[1] - len);
   return [s, s + len];
 }
 
 function findBreakSlot(s, e, othersMerged, config) {
   const breakLen = config.shifts.break_minutes;
   const minSeg = config.coverage.min_segment_minutes;
+  const grid = config.shifts.round_minutes || 0;
+  const step = grid > 0 ? grid : 15;
   const earliest = s + minSeg;
   const latest = e - minSeg - breakLen;
   if (latest < earliest) return null;
   const pref = toMinutes(config.shifts.break_start);
   const candidates = [];
   if (pref >= earliest && pref <= latest) candidates.push(pref);
-  for (let t = earliest; t <= latest; t += 15) candidates.push(t);
+  // Start the grid walk from the first aligned mark at/after `earliest` so the
+  // break edges land on clean times too.
+  const first = grid > 0 ? Math.max(earliest, snap(earliest + grid - 1, grid)) : earliest;
+  for (let t = first; t <= latest; t += step) candidates.push(t);
   for (const bs of candidates) {
     const be = bs + breakLen;
     if (intervalCoveredBy([bs, be], othersMerged)) return [bs, be];
@@ -159,6 +177,7 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
   const threshold = config.shifts.break_threshold_minutes;
   const breakLen = config.shifts.break_minutes;
   const minSeg = config.coverage.min_segment_minutes;
+  const grid = config.shifts.round_minutes || 0;
   const brkStart = toMinutes(config.shifts.break_start);
   const addedEmpIds = [];
 
@@ -205,7 +224,7 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     else win = largestWindow(w.windows);
     if (!win) continue;
     const span = w.target + (w.target >= threshold ? breakLen : 0);
-    w.intervals = [buildBlockInWindow(win, span, prefer)];
+    w.intervals = [buildBlockInWindow(win, span, prefer, grid)];
   }
 
   // --- coverage repair: fill any gap ---
