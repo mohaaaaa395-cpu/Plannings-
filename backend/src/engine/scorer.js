@@ -140,7 +140,7 @@ export function scoreCandidate(candidate, ctx) {
     const per = candidate.perEmployee[e.id];
     if (!per) return 1;
     const planned = per.plannedMinutesByWeek.reduce((a, b) => a + b, 0);
-    return planned / (e.contract_minutes * 3 || 1);
+    return planned / (e.contract_minutes * candidate.weeks.length || 1);
   });
   add('hours_balance', W.hours_balance * stddev(fillRatios) * 10);
 

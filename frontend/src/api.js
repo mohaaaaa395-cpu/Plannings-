@@ -53,9 +53,9 @@ export const api = {
   deleteUnavailability: (id) => request('DELETE', `/unavailabilities/${id}`),
 
   // schedules
-  previewDates: (start) => request('GET', `/schedules/preview-dates?start_date=${start}`),
-  generate: (start_date, label, overtime_hours = 0) =>
-    request('POST', '/schedules/generate', { start_date, label, overtime_hours }),
+  previewDates: (start, weeks = 3) => request('GET', `/schedules/preview-dates?start_date=${start}&weeks=${weeks}`),
+  generate: (start_date, label, overtime_hours = 0, weeks = 3) =>
+    request('POST', '/schedules/generate', { start_date, label, overtime_hours, weeks }),
   schedules: () => request('GET', '/schedules'),
   schedule: (id) => request('GET', `/schedules/${id}`),
   dashboard: () => request('GET', '/schedules/dashboard'),

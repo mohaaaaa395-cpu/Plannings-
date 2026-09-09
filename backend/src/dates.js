@@ -44,11 +44,12 @@ export function isSaturday(date) {
   return isoWeekday(date) === 6;
 }
 
-// Build a 3-week structure starting at startDate (inclusive), 7 days each.
-export function buildThreeWeeks(startDate) {
+// Build an N-week structure starting at startDate (inclusive), 7 days each.
+export function buildWeeks(startDate, count = 3) {
+  const n = Math.max(1, Math.min(6, Math.round(count) || 3));
   const start = parseDate(startDate);
   const weeks = [];
-  for (let w = 0; w < 3; w++) {
+  for (let w = 0; w < n; w++) {
     const weekStart = addDays(start, w * 7);
     const weekEnd = addDays(weekStart, 6);
     const days = [];
@@ -68,9 +69,14 @@ export function buildThreeWeeks(startDate) {
   }
   return {
     start_date: formatDate(start),
-    end_date: formatDate(addDays(start, 20)),
+    end_date: formatDate(addDays(start, n * 7 - 1)),
     weeks,
   };
+}
+
+// Backward-compatible helper.
+export function buildThreeWeeks(startDate) {
+  return buildWeeks(startDate, 3);
 }
 
 const FR_MONTHS = [

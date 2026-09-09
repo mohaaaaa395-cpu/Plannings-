@@ -24,14 +24,15 @@ function longestRun(dates) {
 
 export function analyzeSchedule(schedule, employees, config) {
   const empById = Object.fromEntries(employees.map((e) => [e.id, e]));
+  const weekCount = Math.max(1, (schedule.weeks || []).length);
   const perEmployee = {};
   for (const e of employees) {
     perEmployee[e.id] = {
       employee_id: e.id,
       name: e.name,
       contract_minutes: e.contract_minutes,
-      planned_by_week: [0, 0, 0],
-      worked_days_by_week: [0, 0, 0],
+      planned_by_week: new Array(weekCount).fill(0),
+      worked_days_by_week: new Array(weekCount).fill(0),
       worked_dates: [],
       planned_total: 0,
       saturdays: 0,
@@ -139,7 +140,7 @@ export function analyzeSchedule(schedule, employees, config) {
   const overtime = (schedule.meta && schedule.meta.overtime_minutes) || 0;
   for (const e of employees) {
     const pe = perEmployee[e.id];
-    const weeklyAvg = pe.planned_total / 3;
+    const weeklyAvg = pe.planned_total / weekCount;
     const target = e.contract_minutes + overtime;
     pe.weekly_avg = Math.round(weeklyAvg);
     pe.overtime_minutes = overtime;

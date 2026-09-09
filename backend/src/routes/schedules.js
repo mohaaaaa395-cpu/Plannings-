@@ -17,16 +17,17 @@ import {
   loadEmployees,
 } from '../services/schedules.js';
 import { analyzeSchedule } from '../services/analysis.js';
-import { buildThreeWeeks } from '../dates.js';
+import { buildWeeks } from '../dates.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
-// Preview the 3-week date structure for a start date (no generation).
+// Preview the date structure for a start date and week count (no generation).
 router.get('/preview-dates', async (req, res) => {
   const start = req.query.start_date;
   if (!start) return res.status(400).json({ error: 'start_date requis' });
-  res.json(buildThreeWeeks(start));
+  const weeks = Math.max(1, Math.min(3, Number(req.query.weeks) || 3));
+  res.json(buildWeeks(start, weeks));
 });
 
 // Generate a new draft planning (persisted only if feasible).
@@ -46,7 +47,8 @@ router.post('/generate', async (req, res) => {
     .map((e) => `Le planning #${e.id} (${e.label}) contient ${e.mc} modification(s) manuelle(s) qui ne seront pas reprises dans cette nouvelle génération.`);
 
   const overtimeMinutes = Math.max(0, Math.round((Number(b.overtime_hours) || 0) * 60));
-  const result = await generateDraft(b.start_date, b.label, req.user?.username, overtimeMinutes);
+  const weeksCount = Math.max(1, Math.min(3, Number(b.weeks) || 3));
+  const result = await generateDraft(b.start_date, b.label, req.user?.username, overtimeMinutes, weeksCount);
   if (!result.feasible) {
     return res.status(200).json({ feasible: false, ...result, manual_warnings: manualWarnings });
   }

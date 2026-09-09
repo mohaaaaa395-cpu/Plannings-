@@ -1,6 +1,6 @@
 import { query, withTransaction } from '../db.js';
 import { loadConfig } from '../config.js';
-import { buildThreeWeeks, parseDate } from '../dates.js';
+import { buildWeeks, parseDate } from '../dates.js';
 import { loadHistory } from '../engine/equity.js';
 import { generate } from '../engine/generator.js';
 import { shiftMinutes, toMinutes } from '../time.js';
@@ -62,12 +62,12 @@ export async function loadUnavailabilities() {
   return byEmp;
 }
 
-export async function buildContext(startDate) {
+export async function buildContext(startDate, weeksCount = 3) {
   const config = await loadConfig();
   const employees = await loadEmployees(startDate);
   const absencesByEmp = await loadAbsences();
   const unavailabilitiesByEmp = await loadUnavailabilities();
-  const weeks = buildThreeWeeks(startDate);
+  const weeks = buildWeeks(startDate, weeksCount);
   const { weighted } = await loadHistory(config, startDate);
   return { config, employees, absencesByEmp, unavailabilitiesByEmp, weeks, weightedHistory: weighted };
 }
@@ -76,8 +76,8 @@ export async function buildContext(startDate) {
 // overtimeMinutes: temporary extra weekly minutes added to every active
 // employee's TARGET for this planning only (heures supplémentaires) — the
 // permanent contracts are never modified.
-export async function generateDraft(startDate, label, createdBy, overtimeMinutes = 0) {
-  const ctx = await buildContext(startDate);
+export async function generateDraft(startDate, label, createdBy, overtimeMinutes = 0, weeksCount = 3) {
+  const ctx = await buildContext(startDate, weeksCount);
   if (overtimeMinutes > 0) {
     for (const e of ctx.employees) e.contract_minutes += overtimeMinutes;
   }

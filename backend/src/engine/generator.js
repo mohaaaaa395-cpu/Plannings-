@@ -212,6 +212,7 @@ function buildCandidate(ctx, seed) {
   // continuous consecutive-day limit, which spans week boundaries).
   const assignedAll = {};
   for (const emp of ctx.employees) assignedAll[emp.id] = new Set();
+  const W = ctx.weeks.weeks.length; // number of weeks in this generation (1..3)
 
   // precompute windows per employee per date
   const windowsPerDate = {};
@@ -231,13 +232,13 @@ function buildCandidate(ctx, seed) {
   }
   const avgAvailDays = {};
   for (const emp of ctx.employees) {
-    avgAvailDays[emp.id] = availPerWeek[emp.id].reduce((a, w) => a + w.length, 0) / 3 || 1;
+    avgAvailDays[emp.id] = availPerWeek[emp.id].reduce((a, w) => a + w.length, 0) / W || 1;
   }
 
   const perEmployee = {};
   for (const emp of ctx.employees) {
     perEmployee[emp.id] = {
-      plannedMinutesByWeek: [0, 0, 0],
+      plannedMinutesByWeek: new Array(W).fill(0),
       contributions: { saturdays: 0, sundays: 0, weekends: 0, openings: 0, closings: 0, worked_minutes: 0, worked_days: 0, long_days: 0 },
       weekStats: [],
       capacity: {

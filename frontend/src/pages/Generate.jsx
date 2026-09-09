@@ -8,6 +8,7 @@ export default function Generate() {
   const [startDate, setStartDate] = useState(nextMondayISO());
   const [label, setLabel] = useState('');
   const [overtime, setOvertime] = useState('0');
+  const [weeks, setWeeks] = useState(3);
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -15,8 +16,8 @@ export default function Generate() {
 
   useEffect(() => {
     if (!startDate) return;
-    api.previewDates(startDate).then(setPreview).catch(() => setPreview(null));
-  }, [startDate]);
+    api.previewDates(startDate, weeks).then(setPreview).catch(() => setPreview(null));
+  }, [startDate, weeks]);
 
   const generate = async () => {
     setBusy(true);
@@ -24,7 +25,7 @@ export default function Generate() {
     setResult(null);
     try {
       const ot = parseFloat(String(overtime).replace(',', '.')) || 0;
-      const r = await api.generate(startDate, label || undefined, ot);
+      const r = await api.generate(startDate, label || undefined, ot, weeks);
       setResult(r);
       if (r.feasible && r.schedule) {
         // Give a beat to show success, then open the schedule
@@ -41,9 +42,9 @@ export default function Generate() {
     <div>
       <h1>Générer un planning</h1>
       <p className="muted">
-        Sélectionnez une date de début. L'application calcule automatiquement les 3 semaines
-        consécutives, récupère les contrats, disponibilités, absences et l'historique, puis génère
-        plusieurs plannings candidats pour retenir le meilleur.
+        Sélectionnez une date de début et le nombre de semaines. L'application calcule les dates,
+        récupère les contrats, disponibilités, absences et l'historique, puis génère plusieurs
+        plannings candidats pour retenir le meilleur.
       </p>
 
       <div className="card">
@@ -51,6 +52,19 @@ export default function Generate() {
           <div className="field">
             <label>Date de début</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Durée</label>
+            <div className="btn-row" style={{ flexWrap: 'nowrap' }}>
+              {[1, 2, 3].map((n) => (
+                <button key={n} type="button"
+                  className={`btn btn--sm ${weeks === n ? 'btn--primary' : ''}`}
+                  style={{ flex: 1 }}
+                  onClick={() => setWeeks(n)}>
+                  {n} sem.
+                </button>
+              ))}
+            </div>
           </div>
           <div className="field">
             <label>Nom du planning (optionnel)</label>
