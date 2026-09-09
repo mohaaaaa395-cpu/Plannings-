@@ -202,11 +202,12 @@ function OverviewGrid({ week, employees }) {
   );
 }
 
-export default function ScheduleDisplay({ schedule, employees, editable = false, onShiftSaved, unavailabilities = [] }) {
+export default function ScheduleDisplay({ schedule, employees, editable = false, onShiftSaved, unavailabilities = [], overtimeMinutes = 0 }) {
   const [view, setView] = useState('week'); // week | global | employee
   const [empFilter, setEmpFilter] = useState(employees[0]?.id || null);
   const [editing, setEditing] = useState(null); // {day, shift}
-  const contractById = Object.fromEntries(employees.map((e) => [e.id, e.contract_minutes]));
+  // Effective weekly target = base contract + temporary overtime for this planning.
+  const contractById = Object.fromEntries(employees.map((e) => [e.id, e.contract_minutes + overtimeMinutes]));
 
   const handleEdit = (day, shift) => {
     if (!shift) return;
@@ -220,6 +221,11 @@ export default function ScheduleDisplay({ schedule, employees, editable = false,
 
   return (
     <div>
+      {overtimeMinutes > 0 && (
+        <div className="alert alert--info" style={{ marginBottom: 12 }}>
+          ⏱️ Heures supplémentaires : <b style={{ margin: '0 4px' }}>+{fmtDuration(overtimeMinutes)}</b> par salarié et par semaine sur ce planning (contrats permanents inchangés).
+        </div>
+      )}
       <div className="tabs no-print">
         <div className={`tab ${view === 'week' ? 'active' : ''}`} onClick={() => setView('week')}>
           Par semaine

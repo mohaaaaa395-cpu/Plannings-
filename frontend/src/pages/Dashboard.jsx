@@ -64,7 +64,9 @@ export default function Dashboard() {
           <div className="stat-tile emp-card" key={pe.employee_id}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <strong>{pe.name}</strong>
-              {pe.conform ? (
+              {pe.not_scheduled ? (
+                <span className="badge">Non planifié(e)</span>
+              ) : pe.conform ? (
                 <span className="badge badge--success">✓</span>
               ) : (
                 <span className="badge badge--warn">⚠</span>
@@ -72,7 +74,12 @@ export default function Dashboard() {
             </div>
             <div className="emp-stats-row">
               <span className="k">Heures / sem.</span>
-              <span className="v">{fmtDuration(pe.weekly_avg)} / {fmtDuration(pe.contract_minutes)}</span>
+              <span className="v">
+                {fmtDuration(pe.weekly_avg)} / {fmtDuration(pe.target_minutes ?? pe.contract_minutes)}
+                {pe.overtime_minutes > 0 && (
+                  <span className="muted" style={{ fontWeight: 400 }}> (dont +{fmtDuration(pe.overtime_minutes)} supp)</span>
+                )}
+              </span>
             </div>
             <div className="emp-stats-row"><span className="k">Samedis</span><span className="v">{pe.saturdays}</span></div>
             <div className="emp-stats-row"><span className="k">Dimanches</span><span className="v">{pe.sundays}</span></div>

@@ -7,6 +7,7 @@ export default function Generate() {
   const navigate = useNavigate();
   const [startDate, setStartDate] = useState(nextMondayISO());
   const [label, setLabel] = useState('');
+  const [overtime, setOvertime] = useState('0');
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -22,7 +23,8 @@ export default function Generate() {
     setError('');
     setResult(null);
     try {
-      const r = await api.generate(startDate, label || undefined);
+      const ot = parseFloat(String(overtime).replace(',', '.')) || 0;
+      const r = await api.generate(startDate, label || undefined, ot);
       setResult(r);
       if (r.feasible && r.schedule) {
         // Give a beat to show success, then open the schedule
@@ -53,6 +55,14 @@ export default function Generate() {
           <div className="field">
             <label>Nom du planning (optionnel)</label>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ex. Rentrée septembre" />
+          </div>
+          <div className="field">
+            <label>Heures supp. (+h / semaine)</label>
+            <input type="text" inputMode="decimal" value={overtime}
+              onChange={(e) => setOvertime(e.target.value)} placeholder="0" />
+            <div className="hint" style={{ fontSize: '.75rem' }}>
+              Ajouté à chaque salarié pour ce planning uniquement (les contrats ne changent pas).
+            </div>
           </div>
         </div>
 

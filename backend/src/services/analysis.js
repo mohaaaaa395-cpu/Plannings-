@@ -134,22 +134,33 @@ export function analyzeSchedule(schedule, employees, config) {
     }
   });
 
-  // contract comparison
+  // contract comparison (target = contrat + heures supp du planning)
   const tol = config.generator.hours_tolerance_minutes;
+  const overtime = (schedule.meta && schedule.meta.overtime_minutes) || 0;
   for (const e of employees) {
     const pe = perEmployee[e.id];
     const weeklyAvg = pe.planned_total / 3;
+    const target = e.contract_minutes + overtime;
     pe.weekly_avg = Math.round(weeklyAvg);
-    pe.contract_diff = Math.round(weeklyAvg - e.contract_minutes);
+    pe.overtime_minutes = overtime;
+    pe.target_minutes = target;
+    pe.contract_diff = Math.round(weeklyAvg - target);
+    // A fully-unscheduled employee (leave, off the whole period) is not a
+    // contract violation — don't flag "manque X h".
+    if (pe.planned_total === 0) {
+      pe.not_scheduled = true;
+      pe.conform = true;
+      continue;
+    }
     pe.conform = Math.abs(pe.contract_diff) <= tol;
     if (!pe.conform) {
       checks.contracts = false;
       if (pe.contract_diff > 0) {
         alerts.push({ level: 'warn', type: 'hours_over', employee_id: e.id,
-          message: `⚠ ${e.name} dépasse son contrat de ${formatDuration(pe.contract_diff)}/semaine` });
+          message: `⚠ ${e.name} dépasse sa cible de ${formatDuration(pe.contract_diff)}/semaine` });
       } else {
         alerts.push({ level: 'warn', type: 'hours_under', employee_id: e.id,
-          message: `⚠ ${e.name} : ${formatDuration(-pe.contract_diff)} de moins que son contrat/semaine` });
+          message: `⚠ ${e.name} : ${formatDuration(-pe.contract_diff)} de moins que sa cible/semaine` });
       }
     }
   }

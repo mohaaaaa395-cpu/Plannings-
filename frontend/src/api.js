@@ -54,7 +54,8 @@ export const api = {
 
   // schedules
   previewDates: (start) => request('GET', `/schedules/preview-dates?start_date=${start}`),
-  generate: (start_date, label) => request('POST', '/schedules/generate', { start_date, label }),
+  generate: (start_date, label, overtime_hours = 0) =>
+    request('POST', '/schedules/generate', { start_date, label, overtime_hours }),
   schedules: () => request('GET', '/schedules'),
   schedule: (id) => request('GET', `/schedules/${id}`),
   dashboard: () => request('GET', '/schedules/dashboard'),

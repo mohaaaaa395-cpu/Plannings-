@@ -45,7 +45,8 @@ router.post('/generate', async (req, res) => {
     .filter((e) => e.mc > 0)
     .map((e) => `Le planning #${e.id} (${e.label}) contient ${e.mc} modification(s) manuelle(s) qui ne seront pas reprises dans cette nouvelle génération.`);
 
-  const result = await generateDraft(b.start_date, b.label, req.user?.username);
+  const overtimeMinutes = Math.max(0, Math.round((Number(b.overtime_hours) || 0) * 60));
+  const result = await generateDraft(b.start_date, b.label, req.user?.username, overtimeMinutes);
   if (!result.feasible) {
     return res.status(200).json({ feasible: false, ...result, manual_warnings: manualWarnings });
   }

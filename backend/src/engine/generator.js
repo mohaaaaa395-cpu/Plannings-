@@ -81,6 +81,8 @@ export function analyzeFeasibility(ctx) {
   for (const emp of ctx.employees) {
     for (const week of ctx.weeks.weeks) {
       const availDates = week.days.map((d) => d.date).filter((date) => availableOnDate(emp, date, ctx));
+      // Fully off that week (leave / not available) is expected, not a shortfall.
+      if (availDates.length === 0) continue;
       const maxPossible = availDates.reduce(
         (sum, date) => sum + maxDayMinutes(ctx.config, dateIsSunday(date)),
         0

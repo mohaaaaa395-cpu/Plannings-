@@ -73,8 +73,14 @@ export async function buildContext(startDate) {
 }
 
 // Generate and (if feasible) persist a draft schedule.
-export async function generateDraft(startDate, label, createdBy) {
+// overtimeMinutes: temporary extra weekly minutes added to every active
+// employee's TARGET for this planning only (heures supplémentaires) — the
+// permanent contracts are never modified.
+export async function generateDraft(startDate, label, createdBy, overtimeMinutes = 0) {
   const ctx = await buildContext(startDate);
+  if (overtimeMinutes > 0) {
+    for (const e of ctx.employees) e.contract_minutes += overtimeMinutes;
+  }
   const result = generate(ctx);
   if (!result.feasible) {
     return {
@@ -97,6 +103,7 @@ export async function generateDraft(startDate, label, createdBy) {
       penalty: result.best.penalty,
       candidatesTried: result.candidatesTried,
       soft_reasons: result.soft_reasons,
+      overtime_minutes: overtimeMinutes || 0,
     },
     createdBy,
     weeks: result.best.weeks,

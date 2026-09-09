@@ -137,6 +137,7 @@ export default function ScheduleView() {
           editable={schedule.status !== 'archived'}
           onShiftSaved={onShiftSaved}
           unavailabilities={unavailabilities}
+          overtimeMinutes={(schedule.meta && schedule.meta.overtime_minutes) || 0}
         />
       </div>
     </div>
