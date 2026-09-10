@@ -49,6 +49,20 @@ export function intervalCoveredBy(target, coverList) {
   return cursor >= target[1];
 }
 
+// Intersection of two lists of intervals (minutes).
+export function intersectWindows(a, b) {
+  const A = mergeIntervals(a);
+  const B = mergeIntervals(b);
+  const out = [];
+  for (const [as, ae] of A)
+    for (const [bs, be] of B) {
+      const s = Math.max(as, bs);
+      const e = Math.min(ae, be);
+      if (e > s) out.push([s, e]);
+    }
+  return mergeIntervals(out);
+}
+
 function subtractHole(windows, hs, he) {
   const out = [];
   for (const [s, e] of windows) {
@@ -172,6 +186,13 @@ function findBreakSlot(s, e, othersMerged, config) {
 // workers: [{emp, windows, target, isOrder, openScore, closeScore}]
 // extra:   [{emp, windows}] available employees not chosen (for relief)
 // Returns { shifts, addedEmpIds, covered, gap }.
+//
+// Intérimaires (emp.is_temp): un intérimaire ne peut JAMAIS rester seul dans
+// le magasin. Seuls les permanents assurent la couverture (ouverture,
+// fermeture, comblement des creux, relève) ; les intérimaires sont ensuite
+// placés uniquement à l'intérieur des plages où un permanent est présent.
+// Ainsi, s'il n'existe pas de solution avec les seuls permanents, le moteur
+// le signale (couverture non assurée) au lieu de laisser un intérimaire seul.
 export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
   const { open, close } = dayBounds(config, day.is_sunday);
   const threshold = config.shifts.break_threshold_minutes;
@@ -181,7 +202,12 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
   const brkStart = toMinutes(config.shifts.break_start);
   const addedEmpIds = [];
 
-  const rt = workers.map((w) => ({ ...w, intervals: [] }));
+  const isTemp = (x) => !!(x && x.emp && x.emp.is_temp);
+  const permWorkers = workers.filter((w) => !isTemp(w));
+  const tempWorkers = workers.filter(isTemp);
+  const permExtra = extra.filter((e) => !isTemp(e));
+
+  const rt = permWorkers.map((w) => ({ ...w, intervals: [] }));
 
   const canOpen = (w) => w.windows.some((win) => win[0] <= open && win[1] > open);
   const canClose = (w) => w.windows.some((win) => win[1] >= close && win[0] < close);
@@ -193,7 +219,7 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     opener = cands[0];
   }
   if (!opener) {
-    const ex = extra.find((e) => e.windows.some((win) => win[0] <= open && win[1] > open));
+    const ex = permExtra.find((e) => e.windows.some((win) => win[0] <= open && win[1] > open));
     if (ex) {
       opener = { emp: ex.emp, windows: ex.windows, target: defaultTarget(config, day), intervals: [], _relief: true };
       rt.push(opener); addedEmpIds.push(ex.emp.id);
@@ -206,7 +232,7 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     .filter((w) => w !== opener && canClose(w))
     .sort((a, b) => (a.closeScore ?? 0) - (b.closeScore ?? 0))[0];
   if (!closer && !canClose(opener)) {
-    const ex = extra.find(
+    const ex = permExtra.find(
       (e) => e.emp.id !== opener.emp.id && e.windows.some((win) => win[1] >= close && win[0] < close)
     );
     if (ex) {
@@ -235,7 +261,7 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     const gaps = findGaps(all, open, close);
     if (gaps.length === 0) break;
     const [g1, g2] = gaps[0];
-    if (!fillGap(rt, extra, addedEmpIds, g1, g2, config, day)) {
+    if (!fillGap(rt, permExtra, addedEmpIds, g1, g2, config, day)) {
       return { shifts: buildShiftObjects(rt, open, close, brkStart), addedEmpIds, covered: false, gap: [g1, g2] };
     }
   }
@@ -254,9 +280,34 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     else w.intervals = merged;
   }
 
-  const shifts = buildShiftObjects(rt, open, close, brkStart);
-  const { covered, gaps } = verifyCoverage(shifts, open, close);
-  return { shifts, addedEmpIds, covered, gap: gaps[0] || null };
+  // Coverage is decided by the permanents alone.
+  const permShifts = buildShiftObjects(rt, open, close, brkStart);
+  const { covered, gaps } = verifyCoverage(permShifts, open, close);
+
+  // --- interims: placed only inside supervised time (a permanent present) ---
+  // `supervised` is the union of permanent presence. When coverage holds it
+  // equals [open, close], so an interim can work its normal block; if a gap
+  // remains, interims are simply never placed inside it (never left alone).
+  const supervised = mergeIntervals(rt.flatMap((w) => w.intervals));
+  const tempRt = [];
+  for (const w of tempWorkers) {
+    const allowed = intersectWindows(w.windows, supervised);
+    if (!allowed.length) continue; // no supervised time available -> interim rests
+    const win = largestWindow(allowed);
+    const span = w.target + (w.target >= threshold ? breakLen : 0);
+    let intervals = [buildBlockInWindow(win, span, 'free', grid)];
+    const [s, e] = intervals[0];
+    if (e - s >= threshold) {
+      // The interim's break can go anywhere a permanent covers (always, within
+      // supervised time); keep the block inside the supervised window.
+      const slot = findBreakSlot(s, e, supervised, config);
+      if (slot) intervals = [[s, slot[0]], [slot[1], e]];
+    }
+    tempRt.push({ ...w, intervals, role: 'interim' });
+  }
+  const tempShifts = buildShiftObjects(tempRt, open, close, brkStart);
+
+  return { shifts: [...permShifts, ...tempShifts], addedEmpIds, covered, gap: gaps[0] || null };
 }
 
 function defaultTarget(config, day) {
@@ -318,6 +369,9 @@ function buildShiftObjects(rt, open, close, brkStart) {
     }
     const firstStart = iv[0][0];
     const lastEnd = iv[iv.length - 1][1];
+    // Un intérimaire n'a pas les clés : il n'est jamais l'ouvreur ni le fermeur
+    // (un permanent est toujours là à ces moments-là).
+    const temp = !!(w.emp && w.emp.is_temp);
     shifts.push({
       employee_id: w.emp.id,
       is_rest: false,
@@ -326,10 +380,10 @@ function buildShiftObjects(rt, open, close, brkStart) {
       afternoon_start: afternoon ? fromMinutes(afternoon[0]) : null,
       afternoon_end: afternoon ? fromMinutes(afternoon[1]) : null,
       worked_minutes: worked,
-      is_opening: firstStart <= open,
-      is_closing: lastEnd >= close,
+      is_opening: !temp && firstStart <= open,
+      is_closing: !temp && lastEnd >= close,
       is_order: !!w.isOrder,
-      role: w._relief ? 'relief' : w === undefined ? 'free' : w.role || 'free',
+      role: temp ? 'interim' : (w._relief ? 'relief' : w.role || 'free'),
     });
   }
   return shifts;

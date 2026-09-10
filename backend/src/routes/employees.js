@@ -16,14 +16,16 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const b = req.body || {};
   const { rows } = await query(
-    `INSERT INTO employees (name, position, has_keys, is_order_manager, weekend_only, color, preferences, sort_order, active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING *`,
+    `INSERT INTO employees (name, position, has_keys, is_order_manager, weekend_only, is_temp, color, preferences, sort_order, active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true) RETURNING *`,
     [
       b.name,
       b.position || 'Employé(e)',
-      b.has_keys ?? true,
-      b.is_order_manager ?? false,
+      // Un intérimaire n'a pas les clés et ne peut pas être responsable commande.
+      b.is_temp ? false : (b.has_keys ?? true),
+      b.is_temp ? false : (b.is_order_manager ?? false),
       b.weekend_only ?? false,
+      b.is_temp ?? false,
       b.color || '#2563eb',
       JSON.stringify(b.preferences || {}),
       b.sort_order || 99,
@@ -47,11 +49,16 @@ router.put('/:id', async (req, res) => {
        has_keys=COALESCE($4,has_keys), is_order_manager=COALESCE($5,is_order_manager),
        weekend_only=COALESCE($6,weekend_only), color=COALESCE($7,color),
        preferences=COALESCE($8,preferences), sort_order=COALESCE($9,sort_order),
-       active=COALESCE($10,active)
+       active=COALESCE($10,active), is_temp=COALESCE($11,is_temp)
      WHERE id=$1 RETURNING *`,
     [
-      id, b.name, b.position, b.has_keys, b.is_order_manager, b.weekend_only,
+      id, b.name, b.position,
+      // Forcer clés/responsable à false quand on marque un intérimaire.
+      b.is_temp === true ? false : b.has_keys,
+      b.is_temp === true ? false : b.is_order_manager,
+      b.weekend_only,
       b.color, b.preferences ? JSON.stringify(b.preferences) : null, b.sort_order, b.active,
+      b.is_temp,
     ]
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Introuvable' });

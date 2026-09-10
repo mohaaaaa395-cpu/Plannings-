@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG } from '../src/config.js';
 import { buildThreeWeeks, isoWeekday } from '../src/dates.js';
 import { toMinutes } from '../src/time.js';
 import { generate, availableOnDate } from '../src/engine/generator.js';
-import { verifyCoverage, computeWindows, shiftIntervals } from '../src/engine/coverage.js';
+import { verifyCoverage, computeWindows, shiftIntervals, mergeIntervals, intervalCoveredBy } from '../src/engine/coverage.js';
 
 let failures = 0;
 function check(name, fn) {
@@ -157,6 +157,42 @@ check('feasible = false', () => assert.equal(rF.feasible, false));
 check('raison mentionne la couverture', () =>
   assert.ok(rF.reasons.join(' ').toLowerCase().includes('couverture'), rF.reasons.join(' | ')));
 check('aucun planning fabriqué', () => assert.equal(rF.best, null));
+
+console.log('Scénario G — Intérimaire jamais seul dans le magasin:');
+const teamWithTemp = [
+  ...team(),
+  { id: 5, name: 'Intérim', position: 'Intérimaire', has_keys: false, is_order_manager: false, weekend_only: false, is_temp: true, contract_minutes: 1800, availability: [], preferences: {} },
+];
+const rG = generate(makeCtx({}, teamWithTemp));
+check('feasible', () => assert.equal(rG.feasible, true));
+check('couverture assurée par les permanents', () => assertFullCoverage(rG));
+check('intérimaire jamais seul + jamais ouverture/fermeture, mais employé', () => {
+  let tempShifts = 0;
+  for (const w of rG.best.weeks)
+    for (const d of w.days) {
+      const working = d.shifts.filter((s) => !s.is_rest);
+      const permIv = mergeIntervals(working.filter((s) => s.employee_id !== 5).flatMap(shiftIntervals));
+      for (const s of working) {
+        if (s.employee_id !== 5) continue;
+        tempShifts++;
+        assert.ok(!s.is_opening && !s.is_closing, `intérim ouvre/ferme le ${d.date}`);
+        for (const iv of shiftIntervals(s))
+          assert.ok(intervalCoveredBy(iv, permIv), `intérim seul le ${d.date} sur ${JSON.stringify(iv)}`);
+      }
+    }
+  assert.ok(tempShifts > 0, 'intérimaire jamais utilisé');
+});
+// Un seul permanent, indisponible un dimanche => impossible (intérim ne tient pas seul)
+const rGx = generate(makeCtx(
+  { 1: [{ date: '2026-09-13', all_day: true }] },
+  [
+    { id: 1, name: 'Yassine', position: 'Directeur', has_keys: true, is_order_manager: true, weekend_only: false, is_temp: false, contract_minutes: 2100, availability: [], preferences: {} },
+    { id: 5, name: 'Intérim', position: 'Intérimaire', has_keys: false, is_order_manager: false, weekend_only: false, is_temp: true, contract_minutes: 1800, availability: [], preferences: {} },
+  ]
+));
+check('impossible si seul un intérimaire pourrait tenir le magasin', () => assert.equal(rGx.feasible, false));
+check('raison mentionne le permanent', () =>
+  assert.ok(rGx.reasons.join(' ').toLowerCase().includes('permanent'), rGx.reasons.join(' | ')));
 
 console.log('Vérification computeWindows:');
 check('plage soustraite correctement', () => {

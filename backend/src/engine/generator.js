@@ -55,16 +55,25 @@ export function analyzeFeasibility(ctx) {
         hard.push(`Aucun salarié disponible le ${d.date} alors que le magasin est ouvert.`);
         continue;
       }
-      // Continuous coverage feasibility: union of all available windows must
+      // Seuls les permanents peuvent tenir le magasin (un intérimaire ne reste
+      // jamais seul), donc la faisabilité de la couverture s'évalue sur eux.
+      const availPerm = avail.filter((e) => !e.is_temp);
+      if (availPerm.length === 0) {
+        hard.push(
+          `Aucun salarié permanent disponible le ${d.date} : un intérimaire ne peut pas tenir le magasin seul.`
+        );
+        continue;
+      }
+      // Continuous coverage feasibility: union of all permanent windows must
       // cover the full opening range.
       const allWindows = [];
-      for (const e of avail) allWindows.push(...computeWindows(e, d.date, ctx));
+      for (const e of availPerm) allWindows.push(...computeWindows(e, d.date, ctx));
       const gaps = findGaps(allWindows, open, close);
       if (gaps.length > 0) {
         const g = gaps[0];
         hard.push(
           `Couverture impossible le ${d.date} : le magasin ne peut pas être tenu de ` +
-            `${fromMinutes(g[0])} à ${fromMinutes(g[1])} (aucun salarié disponible sur ce créneau).`
+            `${fromMinutes(g[0])} à ${fromMinutes(g[1])} (aucun permanent disponible sur ce créneau).`
         );
       }
       if (wd === order.weekday && order.require_manager) {
@@ -281,13 +290,17 @@ function buildCandidate(ctx, seed) {
       if (!config.store.open_days.includes(d.weekday)) { dayPlan[d.date] = { closed: true }; continue; }
       const present = ctx.employees.filter((e) => empChosen[e.id].has(d.date));
       dayPlan[d.date] = { present, orderEmpId: null };
-      if (present.length === 0) {
-        const avail = ctx.employees.filter((e) => availOn(e, d.date) && workSet[e.id].size < cap[e.id] && consecOk(e, d.date));
+      // The store must be held by at least one PERMANENT (an interim can never
+      // be alone). Ensure a permanent is present, pulling one in if needed.
+      if (!present.some((e) => !e.is_temp)) {
+        const avail = ctx.employees.filter(
+          (e) => !e.is_temp && availOn(e, d.date) && workSet[e.id].size < cap[e.id] && consecOk(e, d.date)
+        );
         if (avail.length === 0) {
-          const anyAvail = ctx.employees.some((e) => availOn(e, d.date));
-          hardIssues.push(anyAvail
+          const anyPerm = ctx.employees.some((e) => !e.is_temp && availOn(e, d.date));
+          hardIssues.push(anyPerm
             ? `Impossible de couvrir le ${d.date} sans dépasser les limites de repos / jours consécutifs.`
-            : `Aucun salarié disponible le ${d.date}.`);
+            : `Aucun salarié permanent disponible le ${d.date} (un intérimaire ne peut pas tenir le magasin seul).`);
           continue;
         }
         const chosen = pickLowest(avail, (e) => perEmployee[e.id].plannedMinutesByWeek[wi] + rng() * 30);

@@ -22,6 +22,7 @@ function EmployeeForm({ emp, onClose, onSaved }) {
     has_keys: emp.has_keys ?? true,
     is_order_manager: emp.is_order_manager ?? false,
     weekend_only: emp.weekend_only ?? false,
+    is_temp: emp.is_temp ?? false,
     color: emp.color || '#2563eb',
     active: emp.active ?? true,
     preferences: emp.preferences || {},
@@ -69,8 +70,13 @@ function EmployeeForm({ emp, onClose, onSaved }) {
         </div>
         <div className="field"><label>Couleur</label><input type="color" value={f.color} onChange={(e) => set('color', e.target.value)} /></div>
       </div>
-      <div className="checkbox field"><input type="checkbox" id="keys" checked={f.has_keys} onChange={(e) => set('has_keys', e.target.checked)} /><label htmlFor="keys">Possède les clés (peut ouvrir / fermer)</label></div>
-      <div className="checkbox field"><input type="checkbox" id="mgr" checked={f.is_order_manager} onChange={(e) => set('is_order_manager', e.target.checked)} /><label htmlFor="mgr">Responsable des commandes</label></div>
+      <div className="checkbox field">
+        <input type="checkbox" id="temp" checked={f.is_temp}
+          onChange={(e) => setF((p) => ({ ...p, is_temp: e.target.checked, has_keys: e.target.checked ? false : p.has_keys, is_order_manager: e.target.checked ? false : p.is_order_manager }))} />
+        <label htmlFor="temp">Intérimaire (ne peut jamais rester seul dans le magasin)</label>
+      </div>
+      <div className="checkbox field"><input type="checkbox" id="keys" checked={f.has_keys} disabled={f.is_temp} onChange={(e) => set('has_keys', e.target.checked)} /><label htmlFor="keys">Possède les clés (peut ouvrir / fermer){f.is_temp ? ' — indisponible pour un intérimaire' : ''}</label></div>
+      <div className="checkbox field"><input type="checkbox" id="mgr" checked={f.is_order_manager} disabled={f.is_temp} onChange={(e) => set('is_order_manager', e.target.checked)} /><label htmlFor="mgr">Responsable des commandes{f.is_temp ? ' — indisponible pour un intérimaire' : ''}</label></div>
       <div className="checkbox field"><input type="checkbox" id="we" checked={f.weekend_only} onChange={(e) => set('weekend_only', e.target.checked)} /><label htmlFor="we">Travaille uniquement le week-end (samedi & dimanche)</label></div>
       <div className="checkbox field"><input type="checkbox" id="act" checked={f.active} onChange={(e) => set('active', e.target.checked)} /><label htmlFor="act">Actif</label></div>
       <h4>Préférences (souples, peuvent être ignorées)</h4>
@@ -171,6 +177,7 @@ export default function Team() {
             </div>
             <div className="muted" style={{ marginBottom: 10 }}>{e.position}</div>
             <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+              {e.is_temp && <span className="badge badge--warn">Intérimaire · jamais seul</span>}
               {e.has_keys && <span className="badge">🔑 Clés</span>}
               {e.is_order_manager && <span className="badge badge--warn">📦 Commandes</span>}
               {e.weekend_only && <span className="badge badge--primary">Week-end uniquement</span>}

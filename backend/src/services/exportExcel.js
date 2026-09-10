@@ -90,7 +90,7 @@ export function buildScheduleWorkbook(schedule, employees, config) {
       const b = groupBase(i);
       ws.mergeCells(nameRow, b, nameRow, b + 6);
       const c = ws.getCell(nameRow, b);
-      c.value = `${e.name} ${rangeTxt}`;
+      c.value = `${e.name}${e.is_temp ? ' (intérim)' : ''} ${rangeTxt}`;
       c.font = bold; c.alignment = center;
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFF7' } };
     });

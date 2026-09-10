@@ -48,6 +48,7 @@ function EmployeeWeekTable({ week, emp, contractMinutes, editable, onEdit, unava
         <span className="emp-schedule__name">
           <span className="emp-dot" style={{ background: emp.color }} />
           {emp.name} <span className="muted" style={{ fontWeight: 400 }}>· {emp.position}</span>
+          {emp.is_temp && <span className="badge badge--warn" style={{ marginLeft: 6 }}>intérim</span>}
         </span>
         <WeekTotalBadge week={week} empId={emp.id} contractMinutes={contractMinutes} />
       </div>
@@ -156,6 +157,7 @@ function OverviewGrid({ week, employees }) {
               <tr key={emp.id}>
                 <td className="empname">
                   <span className="emp-dot" style={{ background: emp.color }} /> {emp.name}
+                  {emp.is_temp && <span className="muted" style={{ fontWeight: 400 }}> · intérim</span>}
                 </td>
                 {week.days.map((d) => {
                   const s = d.shifts.find((x) => x.employee_id === emp.id);

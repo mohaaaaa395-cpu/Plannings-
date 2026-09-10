@@ -1,5 +1,5 @@
 import { formatDuration, shiftMinutes, toMinutes } from '../time.js';
-import { verifyCoverage } from '../engine/coverage.js';
+import { verifyCoverage, shiftIntervals, mergeIntervals, intervalCoveredBy } from '../engine/coverage.js';
 
 // ============================================================
 // Analyse a stored (nested) schedule: per-employee stats, coverage
@@ -80,6 +80,24 @@ export function analyzeSchedule(schedule, employees, config) {
             type: 'coverage_gap',
             date: day.date,
             message: `⚠ Magasin sans personnel le ${day.date} (créneau non couvert)`,
+          });
+        }
+      }
+
+      // Un intérimaire ne doit jamais être seul : chacun de ses créneaux doit
+      // être couvert par au moins un permanent présent (utile après une
+      // modification manuelle du planning).
+      const permIntervals = mergeIntervals(
+        working.filter((s) => !empById[s.employee_id]?.is_temp).flatMap(shiftIntervals)
+      );
+      for (const s of working) {
+        if (!empById[s.employee_id]?.is_temp) continue;
+        const alone = shiftIntervals(s).some((iv) => !intervalCoveredBy(iv, permIntervals));
+        if (alone) {
+          checks.coverage = false;
+          alerts.push({
+            level: 'error', type: 'interim_alone', date: day.date, employee_id: s.employee_id,
+            message: `⚠ ${empById[s.employee_id]?.name || 'Intérimaire'} (intérim) se retrouve seul(e) dans le magasin le ${day.date}`,
           });
         }
       }
