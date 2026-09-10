@@ -266,48 +266,45 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     }
   }
 
-  // --- staggered break insertion (only where others cover) ---
-  for (const w of rt) {
-    const merged = mergeIntervals(w.intervals);
-    if (merged.length !== 1) { w.intervals = merged; continue; }
-    const [s, e] = merged[0];
-    if (e - s < threshold) { w.intervals = merged; continue; }
-    const others = [];
-    for (const o of rt) if (o !== w) others.push(...o.intervals);
-    const othersMerged = mergeIntervals(others);
-    const slot = findBreakSlot(s, e, othersMerged, config);
-    if (slot) w.intervals = [[s, slot[0]], [slot[1], e]];
-    else w.intervals = merged;
-  }
-
-  // Coverage is decided by the permanents alone.
-  const permShifts = buildShiftObjects(rt, open, close, brkStart);
-  const { covered, gaps } = verifyCoverage(permShifts, open, close);
-
-  // --- interims: placed only inside supervised time (a permanent present) ---
-  // `supervised` is the union of permanent presence. When coverage holds it
-  // equals [open, close], so an interim can work its normal block; if a gap
-  // remains, interims are simply never placed inside it (never left alone).
+  // At this point permanents form a gapless backbone over [open, close]
+  // (each a single continuous block, before breaks). Coverage feasibility is
+  // therefore already decided by the permanents.
   const supervised = mergeIntervals(rt.flatMap((w) => w.intervals));
+  const { covered, gaps } = verifyCoverage(buildShiftObjects(rt, open, close, brkStart), open, close);
+
+  // --- interims: placed as full blocks inside supervised time (a permanent is
+  // scheduled there). Their only solo moments come later, when they cover a
+  // permanent's break — bounded to the break and never at open/close. ---
   const tempRt = [];
   for (const w of tempWorkers) {
     const allowed = intersectWindows(w.windows, supervised);
     if (!allowed.length) continue; // no supervised time available -> interim rests
     const win = largestWindow(allowed);
     const span = w.target + (w.target >= threshold ? breakLen : 0);
-    let intervals = [buildBlockInWindow(win, span, 'free', grid)];
-    const [s, e] = intervals[0];
-    if (e - s >= threshold) {
-      // The interim's break can go anywhere a permanent covers (always, within
-      // supervised time); keep the block inside the supervised window.
-      const slot = findBreakSlot(s, e, supervised, config);
-      if (slot) intervals = [[s, slot[0]], [slot[1], e]];
-    }
-    tempRt.push({ ...w, intervals, role: 'interim' });
+    tempRt.push({ ...w, intervals: [buildBlockInWindow(win, span, 'free', grid)], role: 'interim' });
   }
-  const tempShifts = buildShiftObjects(tempRt, open, close, brkStart);
 
-  return { shifts: [...permShifts, ...tempShifts], addedEmpIds, covered, gap: gaps[0] || null };
+  // --- staggered break insertion over ALL bodies (permanents + interims) ---
+  // A break is only carved where the OTHER bodies present cover it, so the store
+  // is never empty. Because interims sit inside the permanent backbone, the only
+  // time an interim ends up alone is exactly while a permanent it overlaps is on
+  // break — which is what we allow.
+  const allBodies = [...rt, ...tempRt];
+  for (const w of allBodies) {
+    const merged = mergeIntervals(w.intervals);
+    if (merged.length !== 1) { w.intervals = merged; continue; }
+    const [s, e] = merged[0];
+    if (e - s < threshold) { w.intervals = merged; continue; }
+    const others = [];
+    for (const o of allBodies) if (o !== w) others.push(...o.intervals);
+    const othersMerged = mergeIntervals(others);
+    const slot = findBreakSlot(s, e, othersMerged, config);
+    if (slot) w.intervals = [[s, slot[0]], [slot[1], e]];
+    else w.intervals = merged;
+  }
+
+  const shifts = buildShiftObjects(allBodies, open, close, brkStart);
+  return { shifts, addedEmpIds, covered, gap: gaps[0] || null };
 }
 
 function defaultTarget(config, day) {

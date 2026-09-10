@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG } from '../src/config.js';
 import { buildThreeWeeks, isoWeekday } from '../src/dates.js';
 import { toMinutes } from '../src/time.js';
 import { generate, availableOnDate } from '../src/engine/generator.js';
-import { verifyCoverage, computeWindows, shiftIntervals, mergeIntervals, intervalCoveredBy } from '../src/engine/coverage.js';
+import { verifyCoverage, computeWindows, shiftIntervals, mergeIntervals, intervalCoveredBy, findGaps, buildDayShifts } from '../src/engine/coverage.js';
 
 let failures = 0;
 function check(name, fn) {
@@ -158,29 +158,62 @@ check('raison mentionne la couverture', () =>
   assert.ok(rF.reasons.join(' ').toLowerCase().includes('couverture'), rF.reasons.join(' | ')));
 check('aucun planning fabriqué', () => assert.equal(rF.best, null));
 
-console.log('Scénario G — Intérimaire jamais seul dans le magasin:');
+console.log('Scénario G — Intérimaire seul seulement pendant la pause d\'un permanent:');
 const teamWithTemp = [
   ...team(),
   { id: 5, name: 'Intérim', position: 'Intérimaire', has_keys: false, is_order_manager: false, weekend_only: false, is_temp: true, contract_minutes: 1800, availability: [], preferences: {} },
 ];
 const rG = generate(makeCtx({}, teamWithTemp));
+const MAX_SOLO = DEFAULT_CONFIG.shifts.break_minutes + (DEFAULT_CONFIG.shifts.round_minutes || 0);
 check('feasible', () => assert.equal(rG.feasible, true));
-check('couverture assurée par les permanents', () => assertFullCoverage(rG));
-check('intérimaire jamais seul + jamais ouverture/fermeture, mais employé', () => {
+check('couverture continue partout', () => assertFullCoverage(rG));
+check('intérim: jamais ouverture/fermeture, seul au plus le temps d\'une pause, mais employé', () => {
   let tempShifts = 0;
   for (const w of rG.best.weeks)
     for (const d of w.days) {
       const working = d.shifts.filter((s) => !s.is_rest);
+      const { open, close } = dayBounds(d);
       const permIv = mergeIntervals(working.filter((s) => s.employee_id !== 5).flatMap(shiftIntervals));
       for (const s of working) {
         if (s.employee_id !== 5) continue;
         tempShifts++;
         assert.ok(!s.is_opening && !s.is_closing, `intérim ouvre/ferme le ${d.date}`);
-        for (const iv of shiftIntervals(s))
-          assert.ok(intervalCoveredBy(iv, permIv), `intérim seul le ${d.date} sur ${JSON.stringify(iv)}`);
+        // Les plages où l'intérim n'est pas couvert par un permanent (= seul)
+        // doivent être bornées à une pause et hors ouverture/fermeture.
+        const solo = shiftIntervals(s).flatMap(([a, b]) => findGaps(permIv, a, b));
+        for (const [a, b] of solo) {
+          assert.ok(b - a <= MAX_SOLO, `intérim seul trop longtemps le ${d.date}: ${JSON.stringify([a, b])}`);
+          assert.ok(a > open && b < close, `intérim seul à l'ouverture/fermeture le ${d.date}`);
+        }
       }
     }
   assert.ok(tempShifts > 0, 'intérimaire jamais utilisé');
+});
+// Cas d'un seul permanent présent avec un intérim sur une journée : le
+// permanent DOIT pouvoir prendre sa pause, couverte par l'intérim (seul à ce
+// moment, ce qui est autorisé). Testé directement sur le constructeur de jour.
+check('un permanent seul obtient une pause couverte par l\'intérim', () => {
+  const day = { date: '2026-09-08', weekday: 2, is_sunday: false,
+    open_time: DEFAULT_CONFIG.store.weekday_open, close_time: DEFAULT_CONFIG.store.weekday_close };
+  const full = [[toMinutes('09:50'), toMinutes('19:40')]];
+  const permEmp = { id: 1, name: 'Yassine', is_temp: false };
+  const tempEmp = { id: 5, name: 'Intérim', is_temp: true };
+  const workers = [
+    { emp: permEmp, windows: full, target: 560, isOrder: false, openScore: 0, closeScore: 0 },
+    { emp: tempEmp, windows: full, target: 480, isOrder: false, openScore: 0, closeScore: 0 },
+  ];
+  const res = buildDayShifts(DEFAULT_CONFIG, day, workers, [], () => 0.5);
+  const { open, close } = dayBounds(day);
+  assert.ok(res.covered, 'magasin non couvert');
+  const perm = res.shifts.find((s) => s.employee_id === 1 && !s.is_rest);
+  const temp = res.shifts.find((s) => s.employee_id === 5 && !s.is_rest);
+  assert.ok(perm && perm.morning_start && perm.afternoon_start, 'le permanent seul ne prend pas de pause');
+  const brk = [toMinutes(perm.morning_end), toMinutes(perm.afternoon_start)];
+  assert.ok(intervalCoveredBy(brk, mergeIntervals(shiftIntervals(temp))),
+    'la pause du permanent n\'est pas couverte par l\'intérim');
+  // Le permanent ouvre et ferme ; l'intérim jamais.
+  assert.ok(perm.is_opening && perm.is_closing, 'le permanent doit ouvrir et fermer');
+  assert.ok(!temp.is_opening && !temp.is_closing, 'l\'intérim ne doit ni ouvrir ni fermer');
 });
 // Un seul permanent, indisponible un dimanche => impossible (intérim ne tient pas seul)
 const rGx = generate(makeCtx(

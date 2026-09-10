@@ -1,5 +1,5 @@
 import { formatDuration, shiftMinutes, toMinutes } from '../time.js';
-import { verifyCoverage, shiftIntervals, mergeIntervals, intervalCoveredBy } from '../engine/coverage.js';
+import { verifyCoverage, shiftIntervals, mergeIntervals, findGaps } from '../engine/coverage.js';
 
 // ============================================================
 // Analyse a stored (nested) schedule: per-employee stats, coverage
@@ -84,20 +84,26 @@ export function analyzeSchedule(schedule, employees, config) {
         }
       }
 
-      // Un intérimaire ne doit jamais être seul : chacun de ses créneaux doit
-      // être couvert par au moins un permanent présent (utile après une
-      // modification manuelle du planning).
+      // Un intérimaire peut être seul UNIQUEMENT le temps de la pause du
+      // permanent qui l'accompagne : jamais à l'ouverture/fermeture, et jamais
+      // plus longtemps qu'une pause. On signale toute plage « seul » qui sort
+      // de ce cadre (utile après une modification manuelle du planning).
       const permIntervals = mergeIntervals(
         working.filter((s) => !empById[s.employee_id]?.is_temp).flatMap(shiftIntervals)
       );
+      const maxSolo = (config.shifts.break_minutes || 60) + (config.shifts.round_minutes || 0);
       for (const s of working) {
         if (!empById[s.employee_id]?.is_temp) continue;
-        const alone = shiftIntervals(s).some((iv) => !intervalCoveredBy(iv, permIntervals));
-        if (alone) {
+        // Portions du créneau de l'intérim non couvertes par un permanent.
+        const solo = shiftIntervals(s).flatMap(([a, b]) => findGaps(permIntervals, a, b));
+        const badWindow = solo.find(
+          ([a, b]) => b - a > maxSolo || a <= open || b >= close
+        );
+        if (badWindow) {
           checks.coverage = false;
           alerts.push({
             level: 'error', type: 'interim_alone', date: day.date, employee_id: s.employee_id,
-            message: `⚠ ${empById[s.employee_id]?.name || 'Intérimaire'} (intérim) se retrouve seul(e) dans le magasin le ${day.date}`,
+            message: `⚠ ${empById[s.employee_id]?.name || 'Intérimaire'} (intérim) se retrouve seul(e) dans le magasin le ${day.date} (au-delà d'une simple pause)`,
           });
         }
       }
