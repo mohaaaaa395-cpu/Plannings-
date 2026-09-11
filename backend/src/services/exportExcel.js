@@ -127,6 +127,14 @@ export function buildScheduleWorkbook(schedule, employees, config) {
         c1.alignment = { wrapText: true, vertical: 'top' };
         c1.font = { bold: true, size: 10 };
         ws.getRow(r).height = 30;
+      } else if (day.events && day.events.holiday) {
+        // Jour férié : magasin fermé.
+        const c1 = ws.getCell(r, 1);
+        c1.value = `${FR_DAYS[wd - 1]}\n🔒 Fermé — ${day.events.holiday}`;
+        c1.alignment = { wrapText: true, vertical: 'top' };
+        c1.font = { bold: true, size: 10, italic: true };
+        c1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEDED' } };
+        ws.getRow(r).height = 28;
       }
 
       emps.forEach((e, i) => {

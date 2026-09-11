@@ -52,6 +52,18 @@ export const DEFAULT_CONFIG = {
   deliveries: {
     weekdays: [4, 5], // Thursday, Friday
   },
+  holidays: {
+    // Le magasin est fermé les jours fériés.
+    closed: true,
+    // Jours fériés français (métropole), calculés automatiquement chaque année
+    // (fêtes fixes + Pâques/Ascension/Pentecôte).
+    observe_french: true,
+    // Fermetures ponctuelles supplémentaires (ponts, congés annuels…).
+    // Chaînes "YYYY-MM-DD" ou objets { date, label }.
+    extra: [],
+    // Jours fériés où le magasin ouvre exceptionnellement ("YYYY-MM-DD").
+    open_on: [],
+  },
   noussia: {
     // Structural weekend-only constraint is enforced by employees.weekend_only.
     // Target split of her weekly hours between Saturday and Sunday (ratio).

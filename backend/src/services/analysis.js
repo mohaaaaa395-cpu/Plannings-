@@ -63,6 +63,9 @@ export function analyzeSchedule(schedule, employees, config) {
   (schedule.weeks || []).forEach((week, wi) => {
     const weekendWorked = {}; // empId -> bool
     for (const day of week.days) {
+      // Jour fermé (hors jours d'ouverture, ou jour férié / fermeture) : rien à vérifier.
+      const isClosed = !config.store.open_days.includes(day.weekday) || !!day.events?.holiday;
+      if (isClosed) { day.coverage_ok = true; continue; }
       const working = (day.shifts || []).filter((s) => !s.is_rest);
       const openers = working.filter((s) => s.is_opening);
       const closers = working.filter((s) => s.is_closing);

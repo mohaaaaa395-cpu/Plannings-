@@ -4,6 +4,7 @@ import { EquityTracker, capacityFor } from './equity.js';
 import { scoreCandidate } from './scorer.js';
 import { computeWindows, buildDayShifts, findGaps } from './coverage.js';
 import { toMinutes, fromMinutes } from '../time.js';
+import { holidayInfo } from '../holidays.js';
 
 // Seeded PRNG (mulberry32) for reproducible, diverse candidates.
 function mulberry32(seed) {
@@ -48,6 +49,7 @@ export function analyzeFeasibility(ctx) {
     for (const d of week.days) {
       const wd = d.weekday;
       if (!ctx.config.store.open_days.includes(wd)) continue;
+      if (holidayInfo(d.date, ctx.config).closed) continue; // magasin fermé (férié)
       const { open, close } = dayBounds(ctx.config, dateIsSunday(d.date));
 
       const avail = ctx.employees.filter((e) => availableOnDate(e, d.date, ctx));
@@ -288,6 +290,8 @@ function buildCandidate(ctx, seed) {
     const dayPlan = {};
     for (const d of week.days) {
       if (!config.store.open_days.includes(d.weekday)) { dayPlan[d.date] = { closed: true }; continue; }
+      const hol = holidayInfo(d.date, config);
+      if (hol.closed) { dayPlan[d.date] = { closed: true, holiday: hol.name }; continue; }
       const present = ctx.employees.filter((e) => empChosen[e.id].has(d.date));
       dayPlan[d.date] = { present, orderEmpId: null };
       // The store must be held by at least one PERMANENT (an interim can never
@@ -339,12 +343,13 @@ function buildCandidate(ctx, seed) {
       const plan = dayPlan[d.date];
       const sunday = dateIsSunday(d.date);
       const events = {};
-      if (d.weekday === config.order.weekday) {
+      if (!plan.closed && d.weekday === config.order.weekday) {
         events.order = true;
         events.order_employee_id = plan.orderEmpId || null;
         events.order_deadline = config.order.deadline;
       }
-      if (config.deliveries.weekdays.includes(d.weekday)) events.delivery = true;
+      if (!plan.closed && config.deliveries.weekdays.includes(d.weekday)) events.delivery = true;
+      if (plan.closed && plan.holiday) events.holiday = plan.holiday;
 
       const dayMeta = {
         date: d.date, weekday: d.weekday, is_sunday: sunday,
@@ -387,7 +392,8 @@ function buildCandidate(ctx, seed) {
           if (!working.has(emp.id)) { const r = restShift(); r.employee_id = emp.id; shifts.push(r); }
         }
       } else {
-        for (const emp of ctx.employees) { const r = restShift(); r.employee_id = emp.id; r.note = 'Magasin fermé'; shifts.push(r); }
+        const note = plan.holiday ? `Férié — ${plan.holiday}` : 'Magasin fermé';
+        for (const emp of ctx.employees) { const r = restShift(); r.employee_id = emp.id; r.note = note; shifts.push(r); }
       }
 
       daysOut.push({ ...dayMeta, events, shifts, coverage_ok: coverageOk });

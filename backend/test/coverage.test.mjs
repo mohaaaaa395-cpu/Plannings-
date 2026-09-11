@@ -227,6 +227,27 @@ check('impossible si seul un intérimaire pourrait tenir le magasin', () => asse
 check('raison mentionne le permanent', () =>
   assert.ok(rGx.reasons.join(' ').toLowerCase().includes('permanent'), rGx.reasons.join(' | ')));
 
+console.log('Scénario H — Magasin fermé les jours fériés:');
+const rH = generate(makeCtx({}, team(), '2026-11-09')); // couvre le 11/11 (Armistice)
+check('feasible malgré un férié dans la période', () => assert.equal(rH.feasible, true));
+check('personne ne travaille le 11/11 + libellé férié', () => {
+  let holiday = null;
+  for (const w of rH.best.weeks)
+    for (const d of w.days)
+      if (d.date === '2026-11-11') holiday = d;
+  assert.ok(holiday, 'jour 11/11 introuvable');
+  assert.equal(holiday.shifts.filter((s) => !s.is_rest).length, 0, 'personne ne doit travailler un férié');
+  assert.equal(holiday.events.holiday, 'Armistice 1918');
+});
+check('exception « ouvert ce jour-là » rouvre le magasin', () => {
+  const ctx = makeCtx({}, team(), '2026-11-09');
+  ctx.config = { ...DEFAULT_CONFIG, holidays: { ...DEFAULT_CONFIG.holidays, open_on: ['2026-11-11'] } };
+  const r = generate(ctx);
+  let day = null;
+  for (const w of r.best.weeks) for (const d of w.days) if (d.date === '2026-11-11') day = d;
+  assert.ok(day.shifts.filter((s) => !s.is_rest).length > 0, 'le magasin doit rouvrir avec open_on');
+});
+
 console.log('Vérification computeWindows:');
 check('plage soustraite correctement', () => {
   const ctx = makeCtx({ 2: [{ date: '2026-09-19', all_day: false, start_time: '09:50', end_time: '14:00' }] });

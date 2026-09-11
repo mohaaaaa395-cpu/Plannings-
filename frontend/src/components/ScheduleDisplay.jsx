@@ -5,6 +5,7 @@ import { api } from '../api.js';
 
 function eventTags(day) {
   const tags = [];
+  if (day.events?.holiday) tags.push(<span key="h" className="event-tag event-holiday">🔒 Fermé · {day.events.holiday}</span>);
   if (day.events?.order) tags.push(<span key="o" className="event-tag event-order">📦 Commande</span>);
   if (day.events?.delivery) tags.push(<span key="d" className="event-tag event-delivery">📦 Livraison</span>);
   return tags;

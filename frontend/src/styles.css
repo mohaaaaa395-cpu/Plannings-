@@ -254,6 +254,7 @@ table.planning .editable:hover { background: color-mix(in srgb, var(--primary) 8
 .event-tag { display: inline-block; font-size: .68rem; font-weight: 600; padding: 1px 7px; border-radius: 5px; margin-right: 4px; }
 .event-order { background: var(--warn-light); color: var(--warn); }
 .event-delivery { background: var(--sun); color: var(--primary); }
+.event-holiday { background: var(--ink-line, #e2ddd3); color: var(--ink-faint, #6b6357); }
 .role-tag { font-size: .68rem; color: var(--text-muted); }
 .mk { font-size: .68rem; color: var(--text-muted); margin-right: 5px; white-space: nowrap; }
 .evt { display: inline-block; font-size: .66rem; font-weight: 600; padding: 1px 6px; border-radius: 5px; margin: 2px 4px 0 0; }

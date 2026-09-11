@@ -62,6 +62,8 @@ export function scoreCandidate(candidate, ctx) {
   // ---- Coverage: opening / closing / order / continuity ----
   for (const week of candidate.weeks) {
     for (const day of week.days) {
+      // Jour fermé (hors jours d'ouverture, ou jour férié / fermeture) : rien à évaluer.
+      if (!config.store.open_days.includes(day.weekday) || day.events?.holiday) continue;
       const working = day.shifts.filter((s) => !s.is_rest);
       const openers = working.filter((s) => s.is_opening);
       const closers = working.filter((s) => s.is_closing);

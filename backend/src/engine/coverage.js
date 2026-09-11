@@ -1,6 +1,7 @@
 import { toMinutes, fromMinutes } from '../time.js';
 import { isoWeekday, isSunday as dateIsSunday, withinRange } from '../dates.js';
 import { dayBounds } from './shifts.js';
+import { isHoliday } from '../holidays.js';
 
 // ============================================================
 // Continuous-coverage engine.
@@ -97,6 +98,7 @@ export function computeWindows(emp, date, ctx) {
   const wd = isoWeekday(date);
   const config = ctx.config;
   if (!config.store.open_days.includes(wd)) return [];
+  if (isHoliday(date, config)) return []; // magasin fermé les jours fériés
   if (emp.weekend_only && wd < 6) return [];
 
   const abs = ctx.absencesByEmp?.[emp.id] || [];

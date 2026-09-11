@@ -50,6 +50,37 @@ function DaysPicker({ cfg, toggleDay, path }) {
     </div>
   );
 }
+// Editable list of dates ("YYYY-MM-DD"). Values may be strings or { date, label }.
+function DateList({ cfg, upd, path, addLabel }) {
+  const [d, setD] = useState('');
+  const arr = getPath(cfg, path) || [];
+  const dateOf = (x) => (typeof x === 'string' ? x : x?.date);
+  const labelOf = (x) => (typeof x === 'string' ? null : x?.label);
+  const add = () => {
+    if (!d) return;
+    const cur = arr.map(dateOf);
+    if (!cur.includes(d)) upd(path, [...arr, d].sort((a, b) => String(dateOf(a)).localeCompare(String(dateOf(b)))));
+    setD('');
+  };
+  const remove = (i) => upd(path, arr.filter((_, j) => j !== i));
+  return (
+    <div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+        {arr.length === 0 && <span className="muted">Aucune date.</span>}
+        {arr.map((x, i) => (
+          <span key={i} className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {dateOf(x)}{labelOf(x) ? ` · ${labelOf(x)}` : ''}
+            <button type="button" className="btn btn--sm" style={{ padding: '0 6px' }} onClick={() => remove(i)}>×</button>
+          </span>
+        ))}
+      </div>
+      <div className="row" style={{ gap: 6 }}>
+        <input type="date" value={d} onChange={(e) => setD(e.target.value)} />
+        <button type="button" className="btn btn--sm btn--primary" onClick={add}>{addLabel || 'Ajouter'}</button>
+      </div>
+    </div>
+  );
+}
 
 export default function Settings() {
   const [cfg, setCfg] = useState(null);
@@ -187,6 +218,23 @@ export default function Settings() {
         <h2>Livraisons</h2>
         <label>Jours de livraison</label>
         <DaysPicker cfg={cfg} toggleDay={toggleDay} path={['deliveries', 'weekdays']} />
+      </div>
+
+      <div className="card">
+        <h2>Jours fériés & fermetures</h2>
+        <Chk {...p} path={['holidays', 'closed']} label="Fermé les jours fériés" />
+        <Chk {...p} path={['holidays', 'observe_french']} label="Jours fériés français (calculés automatiquement chaque année)" />
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>Fermetures supplémentaires (ponts, congés annuels…)</label>
+          <DateList cfg={cfg} upd={upd} path={['holidays', 'extra']} addLabel="Ajouter une fermeture" />
+        </div>
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>Jours fériés où le magasin ouvre exceptionnellement</label>
+          <DateList cfg={cfg} upd={upd} path={['holidays', 'open_on']} addLabel="Ajouter une exception" />
+          <div className="muted" style={{ fontSize: '.75rem' }}>
+            Le magasin sera ouvert ce jour-là même s'il s'agit d'un jour férié.
+          </div>
+        </div>
       </div>
 
       <div className="card">
