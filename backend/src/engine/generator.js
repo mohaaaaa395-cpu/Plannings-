@@ -368,8 +368,10 @@ function buildCandidate(ctx, seed) {
         // Whoever is already scheduled keeps their normal shift; only the extra
         // people get a short overlapping shift, so hours are barely affected.
         while (plan.present.length < minDelivery) {
+          // Permanents first; an interim is pulled only as a last resort (they
+          // can reinforce because a permanent is present — never alone).
           const pool = ctx.employees.filter(
-            (e) => !e.is_temp && !plan.present.some((p) => p.id === e.id) &&
+            (e) => !plan.present.some((p) => p.id === e.id) &&
               availOn(e, d.date) && underCap(e, d.date) && consecOk(e, d.date)
           );
           if (pool.length === 0) {
@@ -379,11 +381,11 @@ function buildCandidate(ctx, seed) {
             );
             break;
           }
-          // Prefer whoever has the most room this week (fewest days assigned)
-          // and doesn't dislike this day — so the short shift lands on someone
-          // with slack rather than pushing a full-timer over contract.
+          // Prefer permanents, then whoever has the most room this week (fewest
+          // days assigned) and doesn't dislike this day — so the short shift
+          // lands on someone with slack rather than a full-timer over contract.
           const chosen = pickLowest(pool, (e) =>
-            workSet[e.id].size * 100 + softCostForWorking(e, d.date, ctx) * 200 + rng() * 20);
+            (e.is_temp ? 100000 : 0) + workSet[e.id].size * 100 + softCostForWorking(e, d.date, ctx) * 200 + rng() * 20);
           empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date); assignedAll[chosen.id].add(d.date);
           plan.present.push(chosen);
           (reinforceDatesByEmp[chosen.id] ||= new Set()).add(d.date);

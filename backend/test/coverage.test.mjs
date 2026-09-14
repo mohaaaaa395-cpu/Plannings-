@@ -334,6 +334,33 @@ check('les heures contractuelles restent respectées (± tolérance)', () => {
   }
 });
 
+console.log('Scénario L — Renfort intérimaire auto les jours de livraison:');
+check('un intérimaire complète l\'équipe de livraison quand il manque un permanent', () => {
+  const teamL = [
+    ...team(),
+    { id: 5, name: 'Intérim', position: 'Intérimaire', has_keys: false, is_order_manager: false, weekend_only: false, is_temp: true, contract_minutes: 0, availability: [], preferences: {} },
+  ];
+  const ctx = makeCtx({}, teamL); // start 2026-09-07
+  ctx.absencesByEmp = { 3: [{ start_date: '2026-09-07', end_date: '2026-09-13' }] }; // Jennyfer absente S1
+  const r = generate(ctx);
+  assert.equal(r.feasible, true);
+  const reinforceMax = (DEFAULT_CONFIG.deliveries.reinforce_minutes || 180) + (DEFAULT_CONFIG.shifts.round_minutes || 0);
+  let used = false;
+  for (const d of r.best.weeks[0].days) {
+    if (![4, 5].includes(isoWeekday(d.date))) continue;
+    const it = d.shifts.find((s) => s.employee_id === 5 && !s.is_rest);
+    if (!it) continue;
+    used = true;
+    assert.ok(!it.is_opening && !it.is_closing, `intérim ouvre/ferme le ${d.date}`);
+    assert.ok((it.worked_minutes || 0) <= reinforceMax, `renfort intérim trop long le ${d.date}`);
+    // jamais seul au-delà d'une pause
+    const permIv = mergeIntervals(d.shifts.filter((s) => !s.is_rest && s.employee_id !== 5).flatMap(shiftIntervals));
+    for (const [a, b] of shiftIntervals(it).flatMap(([a, b]) => findGaps(permIv, a, b)))
+      assert.ok(b - a <= (DEFAULT_CONFIG.shifts.break_minutes + (DEFAULT_CONFIG.shifts.round_minutes || 0)), `intérim seul trop longtemps le ${d.date}`);
+  }
+  assert.ok(used, 'l\'intérimaire n\'a jamais été appelé en renfort livraison');
+});
+
 console.log('Scénario K — Jours consécutifs entre deux plannings:');
 check('un salarié ayant fait 5 jours avant le lundi ne travaille pas ce lundi', () => {
   const ctx = makeCtx({}, team(), '2026-09-21');
