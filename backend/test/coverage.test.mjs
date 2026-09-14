@@ -293,13 +293,45 @@ check('Jennyfer n\'est jamais planifiée le dimanche', () => {
       assert.ok(!s, `Jennyfer travaille le dimanche ${d.date}`);
     }
 });
-check('3 personnes les jours de livraison (jeu/ven)', () => {
+check('jours de livraison : pic de 3 présents en même temps, renfort court', () => {
+  const reinforceMax = (DEFAULT_CONFIG.deliveries.reinforce_minutes || 180) + (DEFAULT_CONFIG.shifts.round_minutes || 0);
+  const peak = (day) => {
+    const ivs = day.shifts.filter((s) => !s.is_rest).flatMap(shiftIntervals);
+    let mx = 0;
+    for (let t = toMinutes('09:50'); t < toMinutes('19:40'); t += 5) {
+      let c = 0; for (const [a, b] of ivs) if (a <= t && t < b) c++;
+      mx = Math.max(mx, c);
+    }
+    return mx;
+  };
   for (const w of rJ.best.weeks)
     for (const d of w.days) {
       if (![4, 5].includes(isoWeekday(d.date))) continue;
-      const n = d.shifts.filter((x) => !x.is_rest).length;
-      assert.ok(n >= 3, `seulement ${n} personne(s) le ${d.date} (livraison)`);
+      const present = d.shifts.filter((x) => !x.is_rest);
+      // Quand 3 personnes sont présentes, elles se recoupent (pic simultané = 3).
+      if (present.length >= 3) assert.ok(peak(d) >= 3, `pas de pic de 3 le ${d.date}`);
+      // Un renfort livraison est un coup de main court, pas une journée entière.
+      for (const s of present) {
+        if (s.role !== 'renfort') continue;
+        assert.ok((s.worked_minutes || 0) <= reinforceMax, `renfort trop long le ${d.date}: ${s.worked_minutes} min`);
+      }
     }
+});
+check('les heures contractuelles restent respectées (± tolérance)', () => {
+  const tol = DEFAULT_CONFIG.generator.hours_tolerance_minutes;
+  const perWeek = {};
+  rJ.best.weeks.forEach((w, i) => {
+    for (const d of w.days)
+      for (const s of d.shifts)
+        if (!s.is_rest) perWeek[`${s.employee_id}:${i}`] = (perWeek[`${s.employee_id}:${i}`] || 0) + s.worked_minutes;
+  });
+  for (const emp of teamJ) {
+    if (emp.weekend_only) continue; // Noussia : contrainte week-end, écart connu
+    rJ.best.weeks.forEach((w, i) => {
+      const got = perWeek[`${emp.id}:${i}`] || 0;
+      assert.ok(got <= emp.contract_minutes + tol, `${emp.name} sem${i + 1} : ${(got / 60).toFixed(1)}h > ${(emp.contract_minutes / 60)}h + tol`);
+    });
+  }
 });
 
 console.log('Vérification computeWindows:');

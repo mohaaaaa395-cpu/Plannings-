@@ -210,9 +210,12 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
   const addedEmpIds = [];
 
   const isTemp = (x) => !!(x && x.emp && x.emp.is_temp);
-  const permWorkers = workers.filter((w) => !isTemp(w));
-  const tempWorkers = workers.filter(isTemp);
-  const permExtra = extra.filter((e) => !isTemp(e));
+  // "Extra bodies" don't carry coverage: interims (never alone, handled
+  // elsewhere) and delivery reinforcements (present only a moment to help).
+  const isExtra = (x) => isTemp(x) || !!(x && x.reinforce);
+  const permWorkers = workers.filter((w) => !isExtra(w));
+  const tempWorkers = workers.filter(isExtra);
+  const permExtra = extra.filter((e) => !isExtra(e));
 
   const rt = permWorkers.map((w) => ({ ...w, intervals: [] }));
 
@@ -222,7 +225,11 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
   // --- choose opener (prefer the order manager, else best openScore) ---
   let opener = rt.find((w) => w.isOrder && canOpen(w));
   if (!opener) {
-    const cands = rt.filter(canOpen).sort((a, b) => (a.openScore ?? 0) - (b.openScore ?? 0));
+    // Prefer someone who can open but CANNOT close (bounded latest-end): they
+    // can only be useful at the start, so let them open — this frees a
+    // full-availability colleague from having to span open→close.
+    const cands = rt.filter(canOpen).sort((a, b) =>
+      (canClose(a) - canClose(b)) || (a.openScore ?? 0) - (b.openScore ?? 0));
     opener = cands[0];
   }
   if (!opener) {
@@ -235,9 +242,11 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
   if (!opener) return { shifts: [], addedEmpIds, covered: false, gap: [open, close] };
 
   // --- choose closer (distinct if possible) ---
+  // Prefer someone who can close but CANNOT open (bounded earliest-start) by
+  // symmetry, then the best closeScore.
   let closer = rt
     .filter((w) => w !== opener && canClose(w))
-    .sort((a, b) => (a.closeScore ?? 0) - (b.closeScore ?? 0))[0];
+    .sort((a, b) => (canOpen(a) - canOpen(b)) || (a.closeScore ?? 0) - (b.closeScore ?? 0))[0];
   if (!closer && !canClose(opener)) {
     const ex = permExtra.find(
       (e) => e.emp.id !== opener.emp.id && e.windows.some((win) => win[1] >= close && win[0] < close)
@@ -288,7 +297,7 @@ export function buildDayShifts(config, day, workers, extra, rng = Math.random) {
     if (!allowed.length) continue; // no supervised time available -> interim rests
     const win = largestWindow(allowed);
     const span = w.target + (w.target >= threshold ? breakLen : 0);
-    tempRt.push({ ...w, intervals: [buildBlockInWindow(win, span, 'free', grid)], role: 'interim' });
+    tempRt.push({ ...w, intervals: [buildBlockInWindow(win, span, 'free', grid)], role: isTemp(w) ? 'interim' : 'renfort' });
   }
 
   // --- staggered break insertion over ALL bodies (permanents + interims) ---

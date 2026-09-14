@@ -162,17 +162,12 @@ function runOk(set, date, max) {
 // consecutive run longer than maxConsec (checked against days already assigned
 // in previous weeks + the ones picked here).
 function pickWorkingDays(emp, dates, k, tracker, rng, ctx, priorSet, maxConsec) {
-  const deliveryDays = ctx.config.deliveries.weekdays || [];
-  const needCrew = (ctx.config.deliveries.min_staff || 0) > 1;
   const scored = dates.map((date) => {
     const wd = isoWeekday(date);
     let s = rng();
     if (wd === 6 && !emp.weekend_only) s += tracker.fairnessScore(emp, 'saturdays', 1) * 0.4;
     if (wd === 7 && !emp.weekend_only) s += tracker.fairnessScore(emp, 'sundays', 1) * 0.4;
     s += softCostForWorking(emp, date, ctx) * 0.5;
-    // Prefer scheduling on delivery days so they reach their minimum crew
-    // (unless the employee is an interim, who never carries the delivery load).
-    if (needCrew && !emp.is_temp && deliveryDays.includes(wd)) s -= 0.7;
     return { date, s };
   });
   scored.sort((a, b) => a.s - b.s);
@@ -189,21 +184,32 @@ function pickWorkingDays(emp, dates, k, tracker, rng, ctx, priorSet, maxConsec) 
 
 // Distribute an employee's weekly contract across chosen days (hints only;
 // the coverage builder adjusts real worked time). Returns date -> minutes.
-function distributeWeekTargets(emp, chosenDates, config) {
+// `reinforceDates`: delivery-reinforcement days that get only a short shift
+// (the employee comes to lend a hand for the delivery, not a full day); the
+// rest of the contract is spread across the other chosen days.
+function distributeWeekTargets(emp, chosenDates, config, reinforceDates = new Set()) {
   const targets = {};
   if (chosenDates.length === 0) return targets;
   const minDay = config.shifts.min_day_minutes;
+  const reinforceMin = config.deliveries.reinforce_minutes || 180;
+  // Short reinforcement days first, then share the remainder over normal days.
+  const reinforceHere = chosenDates.filter((d) => reinforceDates.has(d));
+  const normalDates = chosenDates.filter((d) => !reinforceDates.has(d));
+  for (const d of reinforceHere) targets[d] = Math.min(reinforceMin, maxDayMinutes(config, dateIsSunday(d)));
+  const remaining = Math.max(0, emp.contract_minutes - reinforceHere.length * reinforceMin);
+  const spreadDates = normalDates.length ? normalDates : chosenDates;
+  const spreadContract = normalDates.length ? remaining : emp.contract_minutes;
   if (emp.weekend_only) {
     const satR = config.noussia.saturday_ratio;
     const sunR = config.noussia.sunday_ratio;
-    const weights = chosenDates.map((d) => (isSaturday(d) ? satR : dateIsSunday(d) ? sunR : 0.5));
+    const weights = spreadDates.map((d) => (isSaturday(d) ? satR : dateIsSunday(d) ? sunR : 0.5));
     const sum = weights.reduce((a, b) => a + b, 0) || 1;
-    chosenDates.forEach((d, i) => {
-      targets[d] = clamp(Math.round((emp.contract_minutes * weights[i]) / sum), minDay, maxDayMinutes(config, dateIsSunday(d)));
+    spreadDates.forEach((d, i) => {
+      targets[d] = clamp(Math.round((spreadContract * weights[i]) / sum), minDay, maxDayMinutes(config, dateIsSunday(d)));
     });
   } else {
-    const per = Math.round(emp.contract_minutes / chosenDates.length);
-    chosenDates.forEach((d) => {
+    const per = Math.round(spreadContract / spreadDates.length);
+    spreadDates.forEach((d) => {
       targets[d] = clamp(per, minDay, maxDayMinutes(config, dateIsSunday(d)));
     });
   }
@@ -342,17 +348,24 @@ function buildCandidate(ctx, seed) {
       if (mgr) plan.orderEmpId = mgr.id;
     }
 
-    // 3b. Delivery days need a minimum crew (unloading / stocking).
+    // 3b. Delivery days need several people present AT THE SAME MOMENT (to
+    // unload/stock) — but NOT everyone from open to close. We ensure enough
+    // coverage staff (full shifts, who also cover each other's breaks), then
+    // bring in the extra people as SHORT reinforcement shifts that overlap the
+    // crew: a peak of `min_staff` present, without inflating everyone's hours.
     const minDelivery = config.deliveries.min_staff || 0;
+    const reinforceDatesByEmp = {}; // empId -> Set(dates) for this week
     if (minDelivery > 1) {
       for (const d of week.days) {
         const plan = dayPlan[d.date];
         if (plan.closed) continue;
         if (!config.deliveries.weekdays.includes(d.weekday)) continue;
-        let need = minDelivery - plan.present.length;
-        while (need > 0) {
+        // Bring in SHORT reinforcement shifts until `min_staff` are present.
+        // Whoever is already scheduled keeps their normal shift; only the extra
+        // people get a short overlapping shift, so hours are barely affected.
+        while (plan.present.length < minDelivery) {
           const pool = ctx.employees.filter(
-            (e) => !plan.present.some((p) => p.id === e.id) &&
+            (e) => !e.is_temp && !plan.present.some((p) => p.id === e.id) &&
               availOn(e, d.date) && underCap(e, d.date) && consecOk(e, d.date)
           );
           if (pool.length === 0) {
@@ -362,21 +375,22 @@ function buildCandidate(ctx, seed) {
             );
             break;
           }
-          // Préférer les moins chargés et ceux qui n'évitent pas ce jour.
+          // Prefer whoever has the most room this week (fewest days assigned)
+          // and doesn't dislike this day — so the short shift lands on someone
+          // with slack rather than pushing a full-timer over contract.
           const chosen = pickLowest(pool, (e) =>
-            perEmployee[e.id].plannedMinutesByWeek[wi] + softCostForWorking(e, d.date, ctx) * 200 + rng() * 30
-          );
+            workSet[e.id].size * 100 + softCostForWorking(e, d.date, ctx) * 200 + rng() * 20);
           empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date); assignedAll[chosen.id].add(d.date);
           plan.present.push(chosen);
-          need--;
+          (reinforceDatesByEmp[chosen.id] ||= new Set()).add(d.date);
         }
       }
     }
 
-    // 4. weekly hour hints
+    // 4. weekly hour hints (delivery-reinforcement days stay short)
     const weekTargets = {};
     for (const emp of ctx.employees) {
-      weekTargets[emp.id] = distributeWeekTargets(emp, [...empChosen[emp.id]], config);
+      weekTargets[emp.id] = distributeWeekTargets(emp, [...empChosen[emp.id]], config, reinforceDatesByEmp[emp.id] || new Set());
     }
 
     // 5. build each day with guaranteed continuous coverage
@@ -408,6 +422,8 @@ function buildCandidate(ctx, seed) {
           windows: windowsPerDate[e.id][d.date],
           target: weekTargets[e.id][d.date] ?? config.shifts.min_day_minutes,
           isOrder: plan.orderEmpId === e.id,
+          // Renfort livraison : présent seulement un moment, jamais ouvreur/fermeur.
+          reinforce: !!reinforceDatesByEmp[e.id]?.has(d.date),
           openScore: tracker.fairnessScore(e, 'openings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.2,
           closeScore: tracker.fairnessScore(e, 'closings', Math.max(1, e.contract_minutes / 300)) + rng() * 0.2,
         }));

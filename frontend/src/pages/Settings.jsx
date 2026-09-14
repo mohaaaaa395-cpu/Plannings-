@@ -219,8 +219,10 @@ export default function Settings() {
         <label>Jours de livraison</label>
         <DaysPicker cfg={cfg} toggleDay={toggleDay} path={['deliveries', 'weekdays']} />
         <div className="form-row" style={{ marginTop: 10 }}>
-          <Num {...p} path={['deliveries', 'min_staff']} label="Effectif minimum (jours de livraison)"
-            hint="Nombre de personnes présentes visé ces jours-là (ex. 3)." />
+          <Num {...p} path={['deliveries', 'min_staff']} label="Personnes en même temps (livraison)"
+            hint="Pic de présence visé à un moment ces jours-là (ex. 3), pas toute la journée." />
+          <Num {...p} path={['deliveries', 'reinforce_minutes']} label="Durée du renfort (min)" step={15}
+            hint="Le renfort vient donner un coup de main (ex. 180 = 3h), pas la journée entière." />
         </div>
       </div>
 
