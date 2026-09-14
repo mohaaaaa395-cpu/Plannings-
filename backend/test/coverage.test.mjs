@@ -361,6 +361,24 @@ check('un intérimaire complète l\'équipe de livraison quand il manque un perm
   assert.ok(used, 'l\'intérimaire n\'a jamais été appelé en renfort livraison');
 });
 
+console.log('Scénario M — Effectif voulu par jour (plafond + plancher):');
+check('le nombre de personnes par jour est respecté', () => {
+  const ctx = makeCtx({}, team(), '2026-09-21');
+  ctx.config = { ...DEFAULT_CONFIG, staffing: { by_weekday: { 1: 1, 3: 1, 6: 3 }, overrides: [{ date: '2026-09-22', target: 1 }] } };
+  const r = generate(ctx);
+  assert.equal(r.feasible, true);
+  for (const w of r.best.weeks)
+    for (const d of w.days) {
+      const wd = isoWeekday(d.date);
+      const n = d.shifts.filter((s) => !s.is_rest).length;
+      const target = d.date === '2026-09-22' ? 1 : ({ 1: 1, 3: 1, 6: 3 })[wd];
+      if (target == null) continue;
+      assert.ok(n <= target, `${d.date} : ${n} présents > cible ${target}`);
+      assert.ok(n >= 1, `${d.date} : magasin vide`);
+      if (target === 1) assert.equal(n, 1, `${d.date} : cible 1 non respectée (${n})`);
+    }
+});
+
 console.log('Scénario K — Jours consécutifs entre deux plannings:');
 check('un salarié ayant fait 5 jours avant le lundi ne travaille pas ce lundi', () => {
   const ctx = makeCtx({}, team(), '2026-09-21');

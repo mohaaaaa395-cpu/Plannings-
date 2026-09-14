@@ -50,6 +50,60 @@ function DaysPicker({ cfg, toggleDay, path }) {
     </div>
   );
 }
+// Wanted headcount per weekday (empty = automatic).
+function WeekdayTargets({ cfg, upd }) {
+  const by = cfg.staffing?.by_weekday || {};
+  const setWd = (wd, val) => {
+    const next = {};
+    for (const w of WEEKDAYS) next[w.v] = by[w.v] ?? by[String(w.v)] ?? '';
+    next[wd] = val === '' ? '' : Number(val);
+    upd(['staffing', 'by_weekday'], next);
+  };
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+      {WEEKDAYS.map((w) => (
+        <div key={w.v} className="field" style={{ width: 72, marginBottom: 0 }}>
+          <label style={{ fontSize: '.75rem' }}>{w.l}</label>
+          <input type="number" min="1" inputMode="numeric" placeholder="auto"
+            value={by[w.v] ?? by[String(w.v)] ?? ''}
+            onChange={(e) => setWd(w.v, e.target.value)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+// Per-date headcount exceptions: [{ date, target }].
+function StaffingOverrides({ cfg, upd }) {
+  const [d, setD] = useState('');
+  const [n, setN] = useState('2');
+  const arr = cfg.staffing?.overrides || [];
+  const add = () => {
+    if (!d) return;
+    const rest = arr.filter((o) => String(o.date).slice(0, 10) !== d);
+    upd(['staffing', 'overrides'], [...rest, { date: d, target: Number(n) || 1 }]
+      .sort((a, b) => String(a.date).localeCompare(String(b.date))));
+    setD('');
+  };
+  const remove = (i) => upd(['staffing', 'overrides'], arr.filter((_, j) => j !== i));
+  return (
+    <div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+        {arr.length === 0 && <span className="muted">Aucune exception.</span>}
+        {arr.map((o, i) => (
+          <span key={i} className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {String(o.date).slice(0, 10)} → {o.target} pers.
+            <button type="button" className="btn btn--sm" style={{ padding: '0 6px' }} onClick={() => remove(i)}>×</button>
+          </span>
+        ))}
+      </div>
+      <div className="row" style={{ gap: 6, alignItems: 'flex-end' }}>
+        <input type="date" value={d} onChange={(e) => setD(e.target.value)} />
+        <input type="number" min="1" style={{ width: 80 }} value={n} onChange={(e) => setN(e.target.value)} />
+        <button type="button" className="btn btn--sm btn--primary" onClick={add}>Ajouter</button>
+      </div>
+    </div>
+  );
+}
 // Editable list of dates ("YYYY-MM-DD"). Values may be strings or { date, label }.
 function DateList({ cfg, upd, path, addLabel }) {
   const [d, setD] = useState('');
@@ -165,6 +219,24 @@ export default function Settings() {
           <Num {...p} path={['coverage', 'min_closing']} label="Personnes à la fermeture" />
         </div>
         <Chk {...p} path={['coverage', 'require_continuous']} label="Exiger une présence continue (pénaliser les creux)" />
+      </div>
+
+      <div className="card">
+        <h2>Effectif voulu par jour</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Fixez le nombre de personnes voulu chaque jour pour concentrer l'équipe les jours
+          chargés et rester léger les jours calmes. Laissez « auto » pour laisser le moteur
+          décider (selon les contrats, minimum 1). Baisser un jour libère des heures pour un autre.
+        </p>
+        <label>Par jour de semaine</label>
+        <WeekdayTargets cfg={cfg} upd={upd} />
+        <div className="field" style={{ marginTop: 14 }}>
+          <label>Exceptions sur une date précise</label>
+          <StaffingOverrides cfg={cfg} upd={upd} />
+          <div className="muted" style={{ fontSize: '.75rem', marginTop: 4 }}>
+            Ex. un jour de soldes à 3, ou un jour très calme à 1. Prioritaire sur le jour de semaine.
+          </div>
+        </div>
       </div>
 
       <div className="card">

@@ -79,6 +79,17 @@ export const DEFAULT_CONFIG = {
     saturday_ratio: 0.55,
     sunday_ratio: 0.45,
   },
+  staffing: {
+    // Nombre de personnes VOULU chaque jour (pilotable par le directeur pour
+    // concentrer l'équipe les jours chargés et rester à 1 les jours calmes,
+    // ce qui libère des heures — essentiel avec un petit effectif en 7/7).
+    // Cible par jour de semaine (ISO 1=lundi … 7=dimanche). Une valeur fixe le
+    // nombre exact ce jour-là ; un jour absent/null = automatique (le moteur
+    // remplit selon les contrats, minimum 1 pour la couverture).
+    by_weekday: {},
+    // Exceptions sur des dates précises : [{ date:'YYYY-MM-DD', target:N }].
+    overrides: [],
+  },
   rest: {
     // HARD RULE: guaranteed rest days per week (per employee, over the
     // 7-day week). 2 => an employee works at most 5 days a week. If honouring

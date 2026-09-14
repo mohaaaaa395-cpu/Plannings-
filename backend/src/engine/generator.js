@@ -29,6 +29,18 @@ function canDoOrder(emp, date, ctx) {
   return computeWindows(emp, date, ctx).some((win) => win[0] < deadline);
 }
 
+// Wanted headcount for a date, or null = automatic (fill by contracts, min 1).
+// Per-date override wins, else the weekday target, else null.
+function targetForDate(date, config) {
+  const st = config.staffing || {};
+  const ov = (st.overrides || []).find((o) => o && String(o.date).slice(0, 10) === date);
+  if (ov && ov.target != null) return Math.max(1, Number(ov.target));
+  const wd = isoWeekday(date);
+  const byWd = st.by_weekday || {};
+  const v = byWd[wd] ?? byWd[String(wd)];
+  return v != null && v !== '' ? Math.max(1, Number(v)) : null;
+}
+
 function softCostForWorking(emp, date, ctx) {
   const wd = isoWeekday(date);
   let cost = 0;
@@ -291,21 +303,85 @@ function buildCandidate(ctx, seed) {
   for (let wi = 0; wi < ctx.weeks.weeks.length; wi++) {
     const week = ctx.weeks.weeks[wi];
 
-    // 1. choose working days per employee (rest cap + consecutive-day limit)
+    // 1. choose working days per employee (rest cap + consecutive-day limit),
+    // driven by the wanted headcount per day so the team concentrates on busy
+    // days and stays light on calm ones.
+    const need = {};
+    const filled = {};
+    for (const d of week.days) {
+      if (!config.store.open_days.includes(d.weekday)) continue;
+      if (holidayInfo(d.date, config).closed) continue;
+      need[d.date] = targetForDate(d.date, config);
+      filled[d.date] = 0;
+    }
     const empChosen = {};
     const cap = {};
     const workSet = {};
+    const kWant = {};
     for (const emp of ctx.employees) {
-      const dates = availPerWeek[emp.id][wi];
-      cap[emp.id] = workCapFor(emp, dates.length, config);
-      const k = chooseWorkingDayCount(emp, dates, config);
-      const chosen = pickWorkingDays(emp, dates, k, tracker, rng, ctx, assignedAll[emp.id], maxConsec);
-      empChosen[emp.id] = new Set(chosen);
-      workSet[emp.id] = new Set(chosen);
-      for (const d of chosen) assignedAll[emp.id].add(d);
+      empChosen[emp.id] = new Set();
+      workSet[emp.id] = new Set();
+      cap[emp.id] = workCapFor(emp, availPerWeek[emp.id][wi].length, config);
+      kWant[emp.id] = chooseWorkingDayCount(emp, availPerWeek[emp.id][wi], config);
+    }
+    const consecOk = (e, date) => workSet[e.id].has(date) || runOk(assignedAll[e.id], date, maxConsec);
+
+    // DEMAND-FIRST assignment: fill each day up to its wanted headcount, slot by
+    // slot, always giving the slot to the least-loaded eligible person (relative
+    // to their own contract). This respects the director's per-day number both
+    // ways (floor AND ceiling) and keeps hours balanced instead of dumping long
+    // thin-day shifts on one person. Round 0 = the coverage backbone (a
+    // permanent per day); later rounds add extra people only where wanted.
+    const openDates = week.days
+      .map((d) => d.date)
+      .filter((date) => need[date] != null);
+    const assignSlot = (date, permanentOnly) => {
+      const pool = ctx.employees.filter((e) =>
+        (!permanentOnly || !e.is_temp) &&
+        !empChosen[e.id].has(date) &&
+        availOn(e, date) &&
+        workSet[e.id].size < cap[e.id] &&
+        consecOk(e, date)
+      );
+      if (pool.length === 0) return false;
+      const wd = isoWeekday(date);
+      const chosen = pickLowest(pool, (e) => {
+        let s = workSet[e.id].size / Math.max(1, kWant[e.id]); // load relative to contract
+        if (workSet[e.id].size >= kWant[e.id]) s += 3;          // avoid exceeding contract days
+        s += softCostForWorking(e, date, ctx) * 2;              // "n'aime pas ce jour"
+        if (wd === 6 && !e.weekend_only) s += tracker.fairnessScore(e, 'saturdays', 1) * 0.3;
+        if (wd === 7 && !e.weekend_only) s += tracker.fairnessScore(e, 'sundays', 1) * 0.3;
+        return s + rng() * 0.5;
+      });
+      empChosen[chosen.id].add(date); workSet[chosen.id].add(date); assignedAll[chosen.id].add(date);
+      filled[date] = (filled[date] || 0) + 1;
+      return true;
+    };
+    const maxNeed = Math.max(1, ...openDates.map((d) => need[d]));
+    for (let round = 0; round < maxNeed; round++) {
+      // shuffle day order each round for candidate diversity
+      const daysThisRound = openDates.filter((d) => need[d] > round)
+        .sort(() => rng() - 0.5);
+      for (const date of daysThisRound) {
+        if (filled[date] > round) continue;
+        assignSlot(date, round === 0); // first slot must be a permanent
+      }
+    }
+
+    // Phase B — automatic days (no fixed target): each employee fills their
+    // remaining contract days by preference, exactly like before. Minimum
+    // coverage (>= 1) on these days is guaranteed by step 2.
+    const autoDates = week.days.map((d) => d.date).filter((date) => need[date] === null);
+    if (autoDates.length) {
+      for (const emp of ctx.employees) {
+        const remaining = kWant[emp.id] - workSet[emp.id].size;
+        if (remaining <= 0) continue;
+        const empAuto = autoDates.filter((date) => availOn(emp, date) && !empChosen[emp.id].has(date));
+        const chosen = pickWorkingDays(emp, empAuto, remaining, tracker, rng, ctx, assignedAll[emp.id], maxConsec);
+        for (const d of chosen) { empChosen[emp.id].add(d); workSet[emp.id].add(d); assignedAll[emp.id].add(d); }
+      }
     }
     const underCap = (e, date) => workSet[e.id].has(date) || workSet[e.id].size < cap[e.id];
-    const consecOk = (e, date) => workSet[e.id].has(date) || runOk(assignedAll[e.id], date, maxConsec);
 
     // 2. presence per date + ensure at least one worker (within all limits)
     const dayPlan = {};
@@ -329,6 +405,27 @@ function buildCandidate(ctx, seed) {
           continue;
         }
         const chosen = pickLowest(avail, (e) => perEmployee[e.id].plannedMinutesByWeek[wi] + rng() * 30);
+        empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date); assignedAll[chosen.id].add(d.date);
+        present.push(chosen);
+      }
+      // Reach the wanted headcount for the day (full shifts). If not enough
+      // people are available (rest limits / leave), report it without blocking.
+      const target = targetForDate(d.date, config);
+      while (present.length < target) {
+        const avail = ctx.employees.filter(
+          (e) => !present.some((p) => p.id === e.id) &&
+            availOn(e, d.date) && workSet[e.id].size < cap[e.id] && consecOk(e, d.date)
+        );
+        if (avail.length === 0) {
+          softViolations += 1;
+          manualWarnings.push(
+            `Le ${d.date} : ${present.length} personne(s) possible(s) sur ${target} souhaitée(s).`
+          );
+          break;
+        }
+        // Permanents first, then whoever has the most room this week.
+        const chosen = pickLowest(avail, (e) =>
+          (e.is_temp ? 100000 : 0) + workSet[e.id].size * 100 + softCostForWorking(e, d.date, ctx) * 200 + rng() * 20);
         empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date); assignedAll[chosen.id].add(d.date);
         present.push(chosen);
       }
@@ -364,6 +461,9 @@ function buildCandidate(ctx, seed) {
         const plan = dayPlan[d.date];
         if (plan.closed) continue;
         if (!config.deliveries.weekdays.includes(d.weekday)) continue;
+        // If the director fixed this day's headcount explicitly, that number
+        // wins — no extra delivery reinforcement on top.
+        if (targetForDate(d.date, config) != null) continue;
         // Bring in SHORT reinforcement shifts until `min_staff` are present.
         // Whoever is already scheduled keeps their normal shift; only the extra
         // people get a short overlapping shift, so hours are barely affected.
