@@ -16,8 +16,8 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const b = req.body || {};
   const { rows } = await query(
-    `INSERT INTO employees (name, position, has_keys, is_order_manager, weekend_only, is_temp, color, preferences, sort_order, active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true) RETURNING *`,
+    `INSERT INTO employees (name, position, has_keys, is_order_manager, weekend_only, is_temp, color, preferences, sort_order, earliest_start, latest_end, active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true) RETURNING *`,
     [
       b.name,
       b.position || 'Employé(e)',
@@ -29,6 +29,8 @@ router.post('/', async (req, res) => {
       b.color || '#2563eb',
       JSON.stringify(b.preferences || {}),
       b.sort_order || 99,
+      normalizeTime(b.earliest_start),
+      normalizeTime(b.latest_end),
     ]
   );
   const emp = rows[0];
@@ -49,7 +51,9 @@ router.put('/:id', async (req, res) => {
        has_keys=COALESCE($4,has_keys), is_order_manager=COALESCE($5,is_order_manager),
        weekend_only=COALESCE($6,weekend_only), color=COALESCE($7,color),
        preferences=COALESCE($8,preferences), sort_order=COALESCE($9,sort_order),
-       active=COALESCE($10,active), is_temp=COALESCE($11,is_temp)
+       active=COALESCE($10,active), is_temp=COALESCE($11,is_temp),
+       earliest_start = CASE WHEN $12 THEN $13 ELSE earliest_start END,
+       latest_end     = CASE WHEN $14 THEN $15 ELSE latest_end END
      WHERE id=$1 RETURNING *`,
     [
       id, b.name, b.position,
@@ -59,6 +63,10 @@ router.put('/:id', async (req, res) => {
       b.weekend_only,
       b.color, b.preferences ? JSON.stringify(b.preferences) : null, b.sort_order, b.active,
       b.is_temp,
+      // Bornes horaires : présentes dans le corps => on écrit (null = effacer),
+      // absentes => on garde la valeur existante.
+      'earliest_start' in b, normalizeTime(b.earliest_start),
+      'latest_end' in b, normalizeTime(b.latest_end),
     ]
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Introuvable' });

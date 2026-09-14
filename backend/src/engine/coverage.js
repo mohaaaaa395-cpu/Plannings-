@@ -127,9 +127,14 @@ export function computeWindows(emp, date, ctx) {
     windows = subtractHole(windows, toMinutes(u.start_time), toMinutes(u.end_time));
   }
 
-  // clamp to opening hours
+  // Per-employee hard time bounds (lives far → can't open / can't close).
+  // earliest_start: cannot start before this; latest_end: cannot work past this.
+  const lo = emp.earliest_start ? Math.max(open, toMinutes(emp.earliest_start)) : open;
+  const hi = emp.latest_end ? Math.min(close, toMinutes(emp.latest_end)) : close;
+
+  // clamp to opening hours and to the employee's personal bounds
   return windows
-    .map(([s, e]) => [Math.max(s, open), Math.min(e, close)])
+    .map(([s, e]) => [Math.max(s, lo), Math.min(e, hi)])
     .filter(([s, e]) => e - s > 0);
 }
 

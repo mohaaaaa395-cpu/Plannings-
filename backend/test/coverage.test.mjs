@@ -248,6 +248,38 @@ check('exception « ouvert ce jour-là » rouvre le magasin', () => {
   assert.ok(day.shifts.filter((s) => !s.is_rest).length > 0, 'le magasin doit rouvrir avec open_on');
 });
 
+console.log('Scénario I — Bornes horaires par salarié (ne peut pas fermer):');
+check('computeWindows borne la fenêtre à latest_end', () => {
+  const emps = team();
+  emps[1].latest_end = '18:40'; // Rose part au plus tard à 18:40
+  const ctx = makeCtx({}, emps);
+  const w = computeWindows(emps[1], '2026-09-12', ctx); // samedi
+  assert.equal(w.length, 1);
+  assert.equal(w[0][1], toMinutes('18:40'), 'la fenêtre doit s\'arrêter à 18:40');
+});
+check('computeWindows borne la fenêtre à earliest_start', () => {
+  const emps = team();
+  emps[2].earliest_start = '11:00'; // Jennyfer arrive au plus tôt à 11:00
+  const ctx = makeCtx({}, emps);
+  const w = computeWindows(emps[2], '2026-09-08', ctx); // mardi
+  assert.equal(w[0][0], toMinutes('11:00'), 'la fenêtre doit commencer à 11:00');
+});
+check('un salarié qui part à 18:40 ne ferme jamais (weekend)', () => {
+  const emps = team();
+  emps[3].latest_end = '18:40'; // Noussia (weekend) part au plus tard 18:40
+  const r = generate(makeCtx({}, emps));
+  assert.equal(r.feasible, true);
+  assertFullCoverage(r);
+  for (const w of r.best.weeks)
+    for (const d of w.days)
+      for (const s of d.shifts) {
+        if (s.is_rest || s.employee_id !== 4) continue;
+        assert.ok(!s.is_closing, `Noussia ferme le ${d.date} alors qu'elle part à 18:40`);
+        if (s.afternoon_end) assert.ok(toMinutes(s.afternoon_end) <= toMinutes('18:40'),
+          `Noussia finit après 18:40 le ${d.date}`);
+      }
+});
+
 console.log('Vérification computeWindows:');
 check('plage soustraite correctement', () => {
   const ctx = makeCtx({ 2: [{ date: '2026-09-19', all_day: false, start_time: '09:50', end_time: '14:00' }] });

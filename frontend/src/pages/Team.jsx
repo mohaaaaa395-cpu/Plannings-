@@ -23,6 +23,8 @@ function EmployeeForm({ emp, onClose, onSaved }) {
     is_order_manager: emp.is_order_manager ?? false,
     weekend_only: emp.weekend_only ?? false,
     is_temp: emp.is_temp ?? false,
+    earliest_start: emp.earliest_start || '',
+    latest_end: emp.latest_end || '',
     color: emp.color || '#2563eb',
     active: emp.active ?? true,
     preferences: emp.preferences || {},
@@ -79,6 +81,21 @@ function EmployeeForm({ emp, onClose, onSaved }) {
       <div className="checkbox field"><input type="checkbox" id="mgr" checked={f.is_order_manager} disabled={f.is_temp} onChange={(e) => set('is_order_manager', e.target.checked)} /><label htmlFor="mgr">Responsable des commandes{f.is_temp ? ' — indisponible pour un intérimaire' : ''}</label></div>
       <div className="checkbox field"><input type="checkbox" id="we" checked={f.weekend_only} onChange={(e) => set('weekend_only', e.target.checked)} /><label htmlFor="we">Travaille uniquement le week-end (samedi & dimanche)</label></div>
       <div className="checkbox field"><input type="checkbox" id="act" checked={f.active} onChange={(e) => set('active', e.target.checked)} /><label htmlFor="act">Actif</label></div>
+
+      <h4>Contraintes horaires (habite loin, transports…)</h4>
+      <div className="form-row">
+        <div className="field">
+          <label>Arrivée au plus tôt</label>
+          <input type="time" value={f.earliest_start} onChange={(e) => set('earliest_start', e.target.value)} />
+          <div className="hint" style={{ fontSize: '.75rem' }}>Laisser vide = peut ouvrir (arriver à l'ouverture).</div>
+        </div>
+        <div className="field">
+          <label>Départ au plus tard</label>
+          <input type="time" value={f.latest_end} onChange={(e) => set('latest_end', e.target.value)} />
+          <div className="hint" style={{ fontSize: '.75rem' }}>Laisser vide = peut fermer. Ex. 18:40 = ne ferme jamais.</div>
+        </div>
+      </div>
+
       <h4>Préférences (souples, peuvent être ignorées)</h4>
       <div className="checkbox field"><input type="checkbox" id="pw" checked={!!f.preferences.prefWeekend} onChange={(e) => setPref('prefWeekend', e.target.checked)} /><label htmlFor="pw">Préfère le week-end</label></div>
       <div className="checkbox field"><input type="checkbox" id="po" checked={!!f.preferences.prefOpening} onChange={(e) => setPref('prefOpening', e.target.checked)} /><label htmlFor="po">Préfère les ouvertures</label></div>
@@ -181,6 +198,8 @@ export default function Team() {
               {e.has_keys && <span className="badge">🔑 Clés</span>}
               {e.is_order_manager && <span className="badge badge--warn">📦 Commandes</span>}
               {e.weekend_only && <span className="badge badge--primary">Week-end uniquement</span>}
+              {e.earliest_start && <span className="badge">⏰ dès {e.earliest_start}</span>}
+              {e.latest_end && <span className="badge">🚪 jusqu'à {e.latest_end}</span>}
             </div>
             <div className="btn-row">
               <button className="btn btn--sm" onClick={() => setEditing(e)}>Modifier</button>
