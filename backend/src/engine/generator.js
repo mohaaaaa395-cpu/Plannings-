@@ -282,6 +282,8 @@ function buildCandidate(ctx, seed) {
   for (const emp of ctx.employees) {
     perEmployee[emp.id] = {
       plannedMinutesByWeek: new Array(W).fill(0),
+      // Days the employee could actually work each week (0 = on leave/unavailable).
+      availDaysByWeek: availPerWeek[emp.id].map((w) => w.length),
       contributions: { saturdays: 0, sundays: 0, weekends: 0, openings: 0, closings: 0, worked_minutes: 0, worked_days: 0, long_days: 0 },
       weekStats: [],
       capacity: {

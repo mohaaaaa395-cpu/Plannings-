@@ -32,28 +32,46 @@ export function scoreCandidate(candidate, ctx) {
   const empById = Object.fromEntries(employees.map((e) => [e.id, e]));
 
   // ---- Contracts: planned vs contract per week ----
+  // Under-hours are measured against what is ACHIEVABLE given how the store is
+  // staffed (fewer people wanted per day = fewer hours to go around), so a
+  // deliberately light schedule isn't punished as a failure. Over-contract and
+  // genuine imbalance are still penalised. On-leave weeks are skipped entirely.
+  let totalPlanned = 0;
+  let totalContract = 0;
+  for (const emp of employees) {
+    const per = candidate.perEmployee[emp.id];
+    if (!per || !emp.contract_minutes) continue;
+    per.plannedMinutesByWeek.forEach((planned, wi) => {
+      if ((per.availDaysByWeek?.[wi] ?? 1) === 0) return; // on leave that week
+      totalPlanned += planned;
+      totalContract += emp.contract_minutes;
+    });
+  }
+  const globalFill = totalContract > 0 ? Math.min(1, totalPlanned / totalContract) : 1;
+
   for (const emp of employees) {
     const per = candidate.perEmployee[emp.id];
     if (!per) continue;
     per.plannedMinutesByWeek.forEach((planned, wi) => {
+      if ((per.availDaysByWeek?.[wi] ?? 1) === 0) return; // on leave: no shortfall
       const diff = planned - emp.contract_minutes;
       if (diff > tol) {
         add('hours_over', (W.hours_over * (diff - tol)) / 15);
         alerts.push({
-          level: 'warn',
-          type: 'hours_over',
-          employee_id: emp.id,
-          week: wi + 1,
+          level: 'warn', type: 'hours_over', employee_id: emp.id, week: wi + 1,
           message: `${emp.name} dépasse son contrat de ${formatDuration(diff)} (semaine ${wi + 1})`,
         });
-      } else if (diff < -tol) {
-        add('hours_under', (W.hours_under * (-diff - tol)) / 15);
+        return;
+      }
+      // Penalty only for falling short of the achievable (staffing-adjusted) target.
+      const expected = emp.contract_minutes * globalFill;
+      const under = expected - planned;
+      if (under > tol) add('hours_under', (W.hours_under * (under - tol)) / 15);
+      // Informational alert whenever below the real contract (director's call).
+      if (emp.contract_minutes - planned > tol) {
         alerts.push({
-          level: 'warn',
-          type: 'hours_under',
-          employee_id: emp.id,
-          week: wi + 1,
-          message: `${emp.name} : manque ${formatDuration(-diff)} vs contrat (semaine ${wi + 1})`,
+          level: 'warn', type: 'hours_under', employee_id: emp.id, week: wi + 1,
+          message: `${emp.name} : ${formatDuration(planned)} vs contrat ${formatDuration(emp.contract_minutes)} (semaine ${wi + 1})`,
         });
       }
     });

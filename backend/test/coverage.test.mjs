@@ -361,6 +361,25 @@ check('un intérimaire complète l\'équipe de livraison quand il manque un perm
   assert.ok(used, 'l\'intérimaire n\'a jamais été appelé en renfort livraison');
 });
 
+console.log('Scénario N — Le score ne s\'effondre pas (sous-effectif voulu / congé):');
+check('score correct sur 3 semaines en auto', () => {
+  const ctx = makeCtx({}, team(), '2026-09-21');
+  const r = generate(ctx);
+  assert.ok(r.best.score >= 60, `score auto trop bas: ${r.best.score}`);
+});
+check('effectif volontairement léger ne met pas le score à zéro', () => {
+  const ctx = makeCtx({}, team(), '2026-09-21');
+  ctx.config = { ...DEFAULT_CONFIG, staffing: { by_weekday: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1 }, overrides: [] } };
+  const r = generate(ctx);
+  assert.ok(r.best.score >= 25, `score sous-effectif trop bas: ${r.best.score}`);
+});
+check('un salarié en congé une semaine ne plombe pas le score', () => {
+  const ctx = makeCtx({}, team(), '2026-09-21');
+  ctx.absencesByEmp = { 3: [{ start_date: '2026-09-21', end_date: '2026-09-27' }] };
+  const r = generate(ctx);
+  assert.ok(r.best.score >= 40, `score avec congé trop bas: ${r.best.score}`);
+});
+
 console.log('Scénario M — Effectif voulu par jour (plafond + plancher):');
 check('le nombre de personnes par jour est respecté', () => {
   const ctx = makeCtx({}, team(), '2026-09-21');
