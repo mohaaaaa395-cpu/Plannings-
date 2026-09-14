@@ -1,5 +1,6 @@
 import { formatDuration, shiftMinutes, toMinutes } from '../time.js';
 import { verifyCoverage, shiftIntervals, mergeIntervals, findGaps } from '../engine/coverage.js';
+import { withinRange } from '../dates.js';
 
 // ============================================================
 // Analyse a stored (nested) schedule: per-employee stats, coverage
@@ -22,9 +23,21 @@ function longestRun(dates) {
   return max;
 }
 
-export function analyzeSchedule(schedule, employees, config) {
+export function analyzeSchedule(schedule, employees, config, absencesByEmp = {}) {
   const empById = Object.fromEntries(employees.map((e) => [e.id, e]));
   const weekCount = Math.max(1, (schedule.weeks || []).length);
+  // Weeks where an employee is fully on leave (every day of the week within an
+  // absence) don't count toward their weekly average — a vacation isn't a
+  // shortfall.
+  const onLeaveWeek = (empId, week) => {
+    const abs = absencesByEmp[empId] || [];
+    if (abs.length === 0) return false;
+    return (week.days || []).every((d) => abs.some((a) => withinRange(d.date, a.start_date, a.end_date)));
+  };
+  const availableWeeks = {};
+  for (const e of employees) {
+    availableWeeks[e.id] = (schedule.weeks || []).filter((w) => !onLeaveWeek(e.id, w)).length;
+  }
   const perEmployee = {};
   for (const e of employees) {
     perEmployee[e.id] = {
@@ -167,7 +180,10 @@ export function analyzeSchedule(schedule, employees, config) {
   const overtime = (schedule.meta && schedule.meta.overtime_minutes) || 0;
   for (const e of employees) {
     const pe = perEmployee[e.id];
-    const weeklyAvg = pe.planned_total / weekCount;
+    // Average over weeks the employee was actually available (leave excluded).
+    const activeWeeks = Math.max(1, availableWeeks[e.id]);
+    const weeklyAvg = pe.planned_total / activeWeeks;
+    pe.active_weeks = availableWeeks[e.id];
     const target = e.contract_minutes + overtime;
     pe.weekly_avg = Math.round(weeklyAvg);
     pe.overtime_minutes = overtime;

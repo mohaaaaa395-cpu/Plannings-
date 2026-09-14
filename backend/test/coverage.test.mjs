@@ -5,6 +5,7 @@ import { buildThreeWeeks, isoWeekday } from '../src/dates.js';
 import { toMinutes } from '../src/time.js';
 import { generate, availableOnDate } from '../src/engine/generator.js';
 import { verifyCoverage, computeWindows, shiftIntervals, mergeIntervals, intervalCoveredBy, findGaps, buildDayShifts } from '../src/engine/coverage.js';
+import { analyzeSchedule } from '../src/services/analysis.js';
 
 let failures = 0;
 function check(name, fn) {
@@ -359,6 +360,21 @@ check('un intérimaire complète l\'équipe de livraison quand il manque un perm
       assert.ok(b - a <= (DEFAULT_CONFIG.shifts.break_minutes + (DEFAULT_CONFIG.shifts.round_minutes || 0)), `intérim seul trop longtemps le ${d.date}`);
   }
   assert.ok(used, 'l\'intérimaire n\'a jamais été appelé en renfort livraison');
+});
+
+console.log('Scénario O — Résumé de validation : les congés ne comptent pas comme un manque:');
+check('un salarié en congé 2 semaines sur 3 n\'est pas signalé « en manque »', () => {
+  const absencesByEmp = { 2: [{ start_date: '2026-09-28', end_date: '2026-10-12' }] }; // Rose S2+S3
+  const ctx = makeCtx({}, team(), '2026-09-21');
+  ctx.absencesByEmp = absencesByEmp;
+  const r = generate(ctx);
+  const schedule = { start_date: '2026-09-21', end_date: r.best.weeks[2].end_date, meta: {}, weeks: r.best.weeks };
+  const a = analyzeSchedule(schedule, team(), DEFAULT_CONFIG, absencesByEmp);
+  const rose = a.perEmployee.find((p) => p.employee_id === 2);
+  assert.equal(rose.active_weeks, 1, 'Rose devrait avoir 1 semaine active');
+  assert.ok(rose.conform, `Rose signalée non conforme à tort (écart ${rose.contract_diff})`);
+  assert.ok(Math.abs(rose.contract_diff) <= DEFAULT_CONFIG.generator.hours_tolerance_minutes,
+    `Rose : écart ${rose.contract_diff} hors tolérance`);
 });
 
 console.log('Scénario N — Le score ne s\'effondre pas (sous-effectif voulu / congé):');

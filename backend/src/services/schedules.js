@@ -283,7 +283,8 @@ export async function analyzeScheduleId(id) {
   if (!schedule) return null;
   const config = await loadConfig();
   const employees = await loadEmployees(schedule.start_date);
-  const analysis = analyzeSchedule(schedule, employees, config);
+  const absencesByEmp = await loadAbsences();
+  const analysis = analyzeSchedule(schedule, employees, config, absencesByEmp);
   return { schedule, analysis, config, employees };
 }
 

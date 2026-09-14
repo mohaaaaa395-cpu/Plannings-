@@ -16,6 +16,7 @@ import {
   deleteSchedule,
   listSchedules,
   loadEmployees,
+  loadAbsences,
 } from '../services/schedules.js';
 import { analyzeSchedule } from '../services/analysis.js';
 import { buildWeeks } from '../dates.js';
@@ -152,7 +153,7 @@ router.get('/:id/export.xlsx', async (req, res) => {
   if (!schedule) return res.status(404).json({ error: 'Planning introuvable' });
   const config = await loadConfig();
   const employees = await loadEmployees(schedule.start_date);
-  const analysis = analyzeSchedule(schedule, employees, config);
+  const analysis = analyzeSchedule(schedule, employees, config, await loadAbsences());
 
   // Main sheet in the store's own template layout.
   const wb = buildScheduleWorkbook(schedule, employees, config);
