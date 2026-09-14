@@ -51,6 +51,10 @@ export const DEFAULT_CONFIG = {
   },
   deliveries: {
     weekdays: [4, 5], // Thursday, Friday
+    // Effectif minimum présent les jours de livraison (charge de travail).
+    // Le moteur essaie d'atteindre ce nombre ; s'il manque de monde
+    // (congés, indispos), il le signale sans bloquer la génération.
+    min_staff: 3,
   },
   holidays: {
     // Le magasin est fermé les jours fériés.

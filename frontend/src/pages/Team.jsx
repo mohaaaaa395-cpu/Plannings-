@@ -100,6 +100,8 @@ function EmployeeForm({ emp, onClose, onSaved }) {
       <div className="checkbox field"><input type="checkbox" id="pw" checked={!!f.preferences.prefWeekend} onChange={(e) => setPref('prefWeekend', e.target.checked)} /><label htmlFor="pw">Préfère le week-end</label></div>
       <div className="checkbox field"><input type="checkbox" id="po" checked={!!f.preferences.prefOpening} onChange={(e) => setPref('prefOpening', e.target.checked)} /><label htmlFor="po">Préfère les ouvertures</label></div>
       <div className="checkbox field"><input type="checkbox" id="pc" checked={!!f.preferences.prefClosing} onChange={(e) => setPref('prefClosing', e.target.checked)} /><label htmlFor="pc">Préfère les fermetures</label></div>
+      <div className="checkbox field"><input type="checkbox" id="asat" checked={!!f.preferences.avoidSaturday} onChange={(e) => setPref('avoidSaturday', e.target.checked)} /><label htmlFor="asat">N'aime pas les samedis (évité si possible)</label></div>
+      <div className="checkbox field"><input type="checkbox" id="asun" checked={!!f.preferences.avoidSunday} onChange={(e) => setPref('avoidSunday', e.target.checked)} /><label htmlFor="asun">N'aime pas les dimanches (évité si possible)</label></div>
     </Modal>
   );
 }

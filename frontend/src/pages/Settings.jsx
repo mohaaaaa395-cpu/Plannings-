@@ -218,6 +218,10 @@ export default function Settings() {
         <h2>Livraisons</h2>
         <label>Jours de livraison</label>
         <DaysPicker cfg={cfg} toggleDay={toggleDay} path={['deliveries', 'weekdays']} />
+        <div className="form-row" style={{ marginTop: 10 }}>
+          <Num {...p} path={['deliveries', 'min_staff']} label="Effectif minimum (jours de livraison)"
+            hint="Nombre de personnes présentes visé ces jours-là (ex. 3)." />
+        </div>
       </div>
 
       <div className="card">

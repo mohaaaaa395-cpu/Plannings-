@@ -36,6 +36,11 @@ function softCostForWorking(emp, date, ctx) {
     if (av.is_hard) continue;
     if (av.kind === 'avoid' && (av.weekday == null || av.weekday === wd)) cost += 1;
   }
+  // Préférences « n'aime pas ce jour » (souple mais fortement respecté).
+  const prefs = emp.preferences || {};
+  if (prefs.avoidSunday && wd === 7) cost += 3;
+  if (prefs.avoidSaturday && wd === 6) cost += 3;
+  if (Array.isArray(prefs.avoid_weekdays) && prefs.avoid_weekdays.includes(wd)) cost += 3;
   return cost;
 }
 
@@ -157,12 +162,17 @@ function runOk(set, date, max) {
 // consecutive run longer than maxConsec (checked against days already assigned
 // in previous weeks + the ones picked here).
 function pickWorkingDays(emp, dates, k, tracker, rng, ctx, priorSet, maxConsec) {
+  const deliveryDays = ctx.config.deliveries.weekdays || [];
+  const needCrew = (ctx.config.deliveries.min_staff || 0) > 1;
   const scored = dates.map((date) => {
     const wd = isoWeekday(date);
     let s = rng();
     if (wd === 6 && !emp.weekend_only) s += tracker.fairnessScore(emp, 'saturdays', 1) * 0.4;
     if (wd === 7 && !emp.weekend_only) s += tracker.fairnessScore(emp, 'sundays', 1) * 0.4;
     s += softCostForWorking(emp, date, ctx) * 0.5;
+    // Prefer scheduling on delivery days so they reach their minimum crew
+    // (unless the employee is an interim, who never carries the delivery load).
+    if (needCrew && !emp.is_temp && deliveryDays.includes(wd)) s -= 0.7;
     return { date, s };
   });
   scored.sort((a, b) => a.s - b.s);
@@ -265,6 +275,7 @@ function buildCandidate(ctx, seed) {
 
   let softViolations = 0;
   const hardIssues = [];
+  const manualWarnings = [];
   const outWeeks = [];
 
   for (let wi = 0; wi < ctx.weeks.weeks.length; wi++) {
@@ -329,6 +340,37 @@ function buildCandidate(ctx, seed) {
         plan.present.push(mgr);
       }
       if (mgr) plan.orderEmpId = mgr.id;
+    }
+
+    // 3b. Delivery days need a minimum crew (unloading / stocking).
+    const minDelivery = config.deliveries.min_staff || 0;
+    if (minDelivery > 1) {
+      for (const d of week.days) {
+        const plan = dayPlan[d.date];
+        if (plan.closed) continue;
+        if (!config.deliveries.weekdays.includes(d.weekday)) continue;
+        let need = minDelivery - plan.present.length;
+        while (need > 0) {
+          const pool = ctx.employees.filter(
+            (e) => !plan.present.some((p) => p.id === e.id) &&
+              availOn(e, d.date) && underCap(e, d.date) && consecOk(e, d.date)
+          );
+          if (pool.length === 0) {
+            softViolations += 1;
+            manualWarnings.push(
+              `Livraison du ${d.date} : seulement ${plan.present.length} personne(s) disponible(s) sur ${minDelivery} souhaitée(s).`
+            );
+            break;
+          }
+          // Préférer les moins chargés et ceux qui n'évitent pas ce jour.
+          const chosen = pickLowest(pool, (e) =>
+            perEmployee[e.id].plannedMinutesByWeek[wi] + softCostForWorking(e, d.date, ctx) * 200 + rng() * 30
+          );
+          empChosen[chosen.id].add(d.date); workSet[chosen.id].add(d.date); assignedAll[chosen.id].add(d.date);
+          plan.present.push(chosen);
+          need--;
+        }
+      }
     }
 
     // 4. weekly hour hints
@@ -447,7 +489,7 @@ function buildCandidate(ctx, seed) {
     perEmployee[emp.id].maxConsecutive = maxConsecutive(perEmployee[emp.id].workDates);
   }
 
-  return { weeks: outWeeks, perEmployee, softViolations, hardIssues: [...new Set(hardIssues)] };
+  return { weeks: outWeeks, perEmployee, softViolations, hardIssues: [...new Set(hardIssues)], manualWarnings: [...new Set(manualWarnings)] };
 }
 
 export function generate(ctx) {
@@ -475,6 +517,7 @@ export function generate(ctx) {
     feasible: hardErrors.length === 0 && best.hardIssues.length === 0,
     reasons: [...new Set(best.hardIssues)],
     soft_reasons: feas.soft,
+    manual_warnings: best.manualWarnings || [],
     best: { ...bestEval, weeks: best.weeks, perEmployee: best.perEmployee },
     candidatesTried: n,
   };

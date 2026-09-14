@@ -280,6 +280,28 @@ check('un salarié qui part à 18:40 ne ferme jamais (weekend)', () => {
       }
 });
 
+console.log('Scénario J — Préférence « pas le dimanche » + effectif livraison:');
+const teamJ = team();
+teamJ[2].preferences = { avoidSunday: true }; // Jennyfer
+const rJ = generate(makeCtx({}, teamJ));
+check('feasible', () => assert.equal(rJ.feasible, true));
+check('Jennyfer n\'est jamais planifiée le dimanche', () => {
+  for (const w of rJ.best.weeks)
+    for (const d of w.days) {
+      if (isoWeekday(d.date) !== 7) continue;
+      const s = d.shifts.find((x) => x.employee_id === 3 && !x.is_rest);
+      assert.ok(!s, `Jennyfer travaille le dimanche ${d.date}`);
+    }
+});
+check('3 personnes les jours de livraison (jeu/ven)', () => {
+  for (const w of rJ.best.weeks)
+    for (const d of w.days) {
+      if (![4, 5].includes(isoWeekday(d.date))) continue;
+      const n = d.shifts.filter((x) => !x.is_rest).length;
+      assert.ok(n >= 3, `seulement ${n} personne(s) le ${d.date} (livraison)`);
+    }
+});
+
 console.log('Vérification computeWindows:');
 check('plage soustraite correctement', () => {
   const ctx = makeCtx({ 2: [{ date: '2026-09-19', all_day: false, start_time: '09:50', end_time: '14:00' }] });
