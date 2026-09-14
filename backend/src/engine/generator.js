@@ -236,9 +236,13 @@ function buildCandidate(ctx, seed) {
   const tracker = new EquityTracker(ctx.employees, ctx.weightedHistory);
   const maxConsec = config.rest?.max_consecutive_days ?? 0;
   // Days each employee is assigned across the WHOLE 3-week window (for the
-  // continuous consecutive-day limit, which spans week boundaries).
+  // continuous consecutive-day limit, which spans week boundaries). Seeded with
+  // the tail of the PREVIOUS planning so a run doesn't reset between plannings
+  // (e.g. worked Sat+Sun then the new planning starts Monday).
   const assignedAll = {};
-  for (const emp of ctx.employees) assignedAll[emp.id] = new Set();
+  for (const emp of ctx.employees) {
+    assignedAll[emp.id] = new Set(ctx.priorWorkDates?.[emp.id] || []);
+  }
   const W = ctx.weeks.weeks.length; // number of weeks in this generation (1..3)
 
   // precompute windows per employee per date

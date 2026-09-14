@@ -62,6 +62,29 @@ export async function loadUnavailabilities() {
   return byEmp;
 }
 
+// Worked (non-rest) days per employee in the days just BEFORE startDate, read
+// from previously saved (non-archived) schedules. Lets the consecutive-day
+// limit span across two plannings (a run doesn't reset at each generation).
+export async function loadPriorWorkDates(startDate, lookbackDays = 7) {
+  const { rows } = await query(
+    `SELECT DISTINCT sh.employee_id, sd.date
+       FROM schedule_shifts sh
+       JOIN schedule_days sd  ON sd.id = sh.schedule_day_id
+       JOIN schedule_weeks sw ON sw.id = sd.schedule_week_id
+       JOIN schedules s       ON s.id = sw.schedule_id
+      WHERE sh.is_rest = false
+        AND s.status <> 'archived'
+        AND sd.date < $1
+        AND sd.date >= ($1::date - $2::int)`,
+    [startDate, lookbackDays]
+  );
+  const byEmp = {};
+  for (const r of rows) {
+    (byEmp[r.employee_id] ||= new Set()).add(String(r.date).slice(0, 10));
+  }
+  return byEmp;
+}
+
 export async function buildContext(startDate, weeksCount = 3) {
   const config = await loadConfig();
   const employees = await loadEmployees(startDate);
@@ -69,7 +92,9 @@ export async function buildContext(startDate, weeksCount = 3) {
   const unavailabilitiesByEmp = await loadUnavailabilities();
   const weeks = buildWeeks(startDate, weeksCount);
   const { weighted } = await loadHistory(config, startDate);
-  return { config, employees, absencesByEmp, unavailabilitiesByEmp, weeks, weightedHistory: weighted };
+  const lookback = Math.max(7, (config.rest?.max_consecutive_days || 0) + 1);
+  const priorWorkDates = await loadPriorWorkDates(startDate, lookback);
+  return { config, employees, absencesByEmp, unavailabilitiesByEmp, weeks, weightedHistory: weighted, priorWorkDates };
 }
 
 // Generate and (if feasible) persist a draft schedule.

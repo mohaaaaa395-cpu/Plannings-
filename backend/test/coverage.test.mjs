@@ -334,6 +334,18 @@ check('les heures contractuelles restent respectées (± tolérance)', () => {
   }
 });
 
+console.log('Scénario K — Jours consécutifs entre deux plannings:');
+check('un salarié ayant fait 5 jours avant le lundi ne travaille pas ce lundi', () => {
+  const ctx = makeCtx({}, team(), '2026-09-21');
+  // Yassine a travaillé du mercredi 16 au dimanche 20 (5 jours d'affilée).
+  ctx.priorWorkDates = { 1: new Set(['2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-20']) };
+  const r = generate(ctx);
+  assert.equal(r.feasible, true);
+  const mon = r.best.weeks[0].days.find((d) => d.date === '2026-09-21');
+  const works = mon.shifts.some((s) => s.employee_id === 1 && !s.is_rest);
+  assert.ok(!works, 'Yassine enchaîne un 6e jour consécutif à cheval sur deux plannings');
+});
+
 console.log('Vérification computeWindows:');
 check('plage soustraite correctement', () => {
   const ctx = makeCtx({ 2: [{ date: '2026-09-19', all_day: false, start_time: '09:50', end_time: '14:00' }] });
