@@ -87,6 +87,7 @@ export default function ScheduleView() {
         <div className="btn-row">
           <button className="btn" onClick={() => window.print()}>🖨️ Imprimer</button>
           <a className="btn" href={api.exportUrl(id)}>📊 Export Excel</a>
+          <a className="btn" href={api.teamPdfUrl(id)}>📄 Fiches PDF (équipe)</a>
           <button className="btn" onClick={duplicate}>📑 Dupliquer</button>
           {schedule.status !== 'archived' && <button className="btn" onClick={archive}>🗄️ Archiver</button>}
           <button className="btn btn--danger" onClick={remove}>🗑️ Supprimer</button>

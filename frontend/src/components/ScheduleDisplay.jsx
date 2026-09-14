@@ -242,13 +242,20 @@ export default function ScheduleDisplay({ schedule, employees, editable = false,
       </div>
 
       {view === 'employee' && (
-        <div className="field no-print" style={{ maxWidth: 260 }}>
-          <label>Salarié</label>
-          <select value={empFilter || ''} onChange={(e) => setEmpFilter(Number(e.target.value))}>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
-          </select>
+        <div className="no-print" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="field" style={{ maxWidth: 260, marginBottom: 0 }}>
+            <label>Salarié</label>
+            <select value={empFilter || ''} onChange={(e) => setEmpFilter(Number(e.target.value))}>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </select>
+          </div>
+          {schedule.id && empFilter && (
+            <a className="btn" href={api.employeePdfUrl(schedule.id, empFilter)}>
+              📄 Fiche PDF de {employees.find((e) => e.id === empFilter)?.name}
+            </a>
+          )}
         </div>
       )}
 

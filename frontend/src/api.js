@@ -66,6 +66,8 @@ export const api = {
   setScheduleStatus: (id, status) => request('POST', `/schedules/${id}/status`, { status }),
   deleteSchedule: (id) => request('DELETE', `/schedules/${id}`),
   exportUrl: (id) => `/api/schedules/${id}/export.xlsx`,
+  employeePdfUrl: (id, empId) => `/api/schedules/${id}/employee/${empId}.pdf`,
+  teamPdfUrl: (id) => `/api/schedules/${id}/fiches.pdf`,
 
   // settings & stats
   settings: () => request('GET', '/settings'),

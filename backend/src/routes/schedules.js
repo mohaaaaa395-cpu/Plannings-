@@ -4,6 +4,7 @@ import { requireAuth } from '../auth.js';
 import { loadConfig } from '../config.js';
 import { normalizeTime, formatDuration } from '../time.js';
 import { buildScheduleWorkbook } from '../services/exportExcel.js';
+import { streamEmployeePdf, streamTeamPdf } from '../services/exportPdf.js';
 import {
   generateDraft,
   getScheduleFull,
@@ -186,6 +187,39 @@ router.get('/:id/export.xlsx', async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="planning-${schedule.start_date}.xlsx"`);
   await wb.xlsx.write(res);
   res.end();
+});
+
+// Slugify a name for a filename (no accents/spaces).
+function slug(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'salarie';
+}
+
+// Fiche PDF d'un seul salarié (imprimable / partageable).
+router.get('/:id/employee/:empId.pdf', async (req, res) => {
+  const schedule = await getScheduleFull(Number(req.params.id));
+  if (!schedule) return res.status(404).json({ error: 'Planning introuvable' });
+  const config = await loadConfig();
+  const employees = await loadEmployees(schedule.start_date);
+  const emp = employees.find((e) => e.id === Number(req.params.empId));
+  if (!emp) return res.status(404).json({ error: 'Salarié introuvable' });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="planning-${slug(emp.name)}-${schedule.start_date}.pdf"`);
+  streamEmployeePdf(res, schedule, emp, config);
+});
+
+// Fiches PDF de toute l'équipe (une page par salarié).
+router.get('/:id/fiches.pdf', async (req, res) => {
+  const schedule = await getScheduleFull(Number(req.params.id));
+  if (!schedule) return res.status(404).json({ error: 'Planning introuvable' });
+  const config = await loadConfig();
+  const employees = await loadEmployees(schedule.start_date);
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="fiches-${schedule.start_date}.pdf"`);
+  streamTeamPdf(res, schedule, employees, config);
 });
 
 export default router;
