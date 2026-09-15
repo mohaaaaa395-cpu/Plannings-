@@ -96,12 +96,33 @@ function EmployeeForm({ emp, onClose, onSaved }) {
         </div>
       </div>
 
-      <h4>Préférences (souples, peuvent être ignorées)</h4>
+      <h4>Jours de repos souhaités</h4>
+      <p className="hint" style={{ fontSize: '.78rem', marginTop: 0 }}>
+        Les jours où ce salarié préfère être en repos. Le moteur les respecte au maximum
+        (souple : il peut passer outre uniquement si c'est indispensable à la couverture).
+      </p>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {WEEKDAYS.map((w) => {
+          const rest = f.preferences.avoid_weekdays || [];
+          const on = rest.includes(w.v);
+          return (
+            <button key={w.v} type="button"
+              className={`btn btn--sm ${on ? 'btn--primary' : ''}`}
+              onClick={() => {
+                const set = new Set(rest);
+                on ? set.delete(w.v) : set.add(w.v);
+                setPref('avoid_weekdays', [...set].sort((a, b) => a - b));
+              }}>
+              {w.l}
+            </button>
+          );
+        })}
+      </div>
+
+      <h4>Autres préférences (souples)</h4>
       <div className="checkbox field"><input type="checkbox" id="pw" checked={!!f.preferences.prefWeekend} onChange={(e) => setPref('prefWeekend', e.target.checked)} /><label htmlFor="pw">Préfère le week-end</label></div>
       <div className="checkbox field"><input type="checkbox" id="po" checked={!!f.preferences.prefOpening} onChange={(e) => setPref('prefOpening', e.target.checked)} /><label htmlFor="po">Préfère les ouvertures</label></div>
       <div className="checkbox field"><input type="checkbox" id="pc" checked={!!f.preferences.prefClosing} onChange={(e) => setPref('prefClosing', e.target.checked)} /><label htmlFor="pc">Préfère les fermetures</label></div>
-      <div className="checkbox field"><input type="checkbox" id="asat" checked={!!f.preferences.avoidSaturday} onChange={(e) => setPref('avoidSaturday', e.target.checked)} /><label htmlFor="asat">N'aime pas les samedis (évité si possible)</label></div>
-      <div className="checkbox field"><input type="checkbox" id="asun" checked={!!f.preferences.avoidSunday} onChange={(e) => setPref('avoidSunday', e.target.checked)} /><label htmlFor="asun">N'aime pas les dimanches (évité si possible)</label></div>
     </Modal>
   );
 }
@@ -202,6 +223,9 @@ export default function Team() {
               {e.weekend_only && <span className="badge badge--primary">Week-end uniquement</span>}
               {e.earliest_start && <span className="badge">⏰ dès {e.earliest_start}</span>}
               {e.latest_end && <span className="badge">🚪 jusqu'à {e.latest_end}</span>}
+              {(e.preferences?.avoid_weekdays || []).length > 0 && (
+                <span className="badge">😴 repos {(e.preferences.avoid_weekdays).map((d) => WEEKDAYS[d - 1].l.slice(0, 3)).join('/')}</span>
+              )}
             </div>
             <div className="btn-row">
               <button className="btn btn--sm" onClick={() => setEditing(e)}>Modifier</button>
