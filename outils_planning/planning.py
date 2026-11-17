@@ -56,8 +56,7 @@ CENTER = Alignment(horizontal='center', vertical='center', wrap_text=True)
 STY = {'ouv': ('D9F2E3', '14532D'), 'fer': ('DBE7FB', '1E3A8A'), 'ouvfer': ('FDE2C4', '7C2D12'),
        'jour': ('FFF4C2', '713F12'), 'sem': ('EADCF8', '581C87'), 'abs': ('FADBD8', '991B1B'),
        'repos': ('F5F5F5', 'A3A3A3'), 'ferme': ('6B7280', 'FFFFFF')}
-LEG = [('ouv', 'Ouverture'), ('fer', 'Fermeture'), ('ouvfer', 'Ouverture + fermeture'),
-       ('jour', 'Milieu de journée'), ('sem', 'Séminaire / trajet'), ('abs', 'Indispo / congé'), ('repos', 'Repos')]
+LEG = [('ouv', 'Ouverture'), ('fer', 'Fermeture'), ('ouvfer', 'Ouverture + fermeture'), ('repos', 'Repos')]
 
 def kind(P, segs, i, date):
     o, c = hours(P, date, i)
@@ -116,11 +115,6 @@ def render(P, out):
             c = ws.cell(r, 2 + i, 'Fermé' if n == 0 else f"{n} pers."); c.font = Font(name=F, italic=True, size=9, color='555555'); c.alignment = CENTER; c.border = B
         ws.cell(r, 9).border = B
         r += 2
-    ws.cell(r, 1, 'À SAVOIR').font = Font(name=F, bold=True, size=11); r += 1
-    for n in P['NOTES']:
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=9)
-        c = ws.cell(r, 1, n); c.font = Font(name=F, size=10); c.alignment = Alignment(wrap_text=True, vertical='top')
-        ws.row_dimensions[r].height = 28; r += 1
     ws.page_setup.orientation = 'landscape'; ws.page_setup.paperSize = 9
     ws.sheet_properties.pageSetUpPr.fitToPage = True; ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
     ws.page_margins.left = ws.page_margins.right = 0.4
