@@ -33,28 +33,28 @@ W1 = [  # 23 -> 29 novembre (Emma indispo ven 27)
  {'Sara': SAT_SARA, 'Emma': E_MID, 'Yassine': YFER},
  {'Sara': SUN_SARA, 'Yassine': SUN_Y, 'Emma': E_SUN},
 ]
-W2 = [  # 30 novembre -> 6 décembre (Emma indispo mer 2 matin ; Jennyfer indispo dim 6)
- {'Rose': OUV8, 'Jennyfer': JF},
+W2 = [  # 30 novembre -> 6 décembre : dimanche Rose (Emma indispo mer 2 matin ; Jennyfer indispo dim 6)
+ {'Emma': E_OUV, 'Jennyfer': JF},
  {'Rose': OUV7, 'Yassine': OUV7, 'Jennyfer': JF},
  {'Rose': OUV7, 'Yassine': YFER, 'Emma': ('INDISPONIBLE (matin)', 0)},
- {'Rose': OUV7, 'Yassine': YMID, 'Jennyfer': JF},
+ {'Rose': OUV8, 'Yassine': YMID, 'Jennyfer': JF},
  {'Emma': E_OUV, 'Rose': ROSE_LATE, 'Jennyfer': JF},
  {'Sara': SAT_SARA, 'Emma': E_MID, 'Yassine': YFER},
- {'Sara': SUN_SARA, 'Yassine': SUN_Y, 'Emma': E_SUN, 'Jennyfer': ('INDISPONIBLE', 0)},
+ {'Rose': SUN_ROSE, 'Sara': SUN_SARA, 'Yassine': SUN_Y, 'Jennyfer': ('INDISPONIBLE', 0)},
 ]
-W3 = [  # 7 -> 13 décembre (Jennyfer indispo lun 7 ; Emma indispo ven 11, sam 12, dim 13)
- {'Rose': OUV8, 'Emma': E_FER, 'Jennyfer': ('INDISPONIBLE', 0)},
+W3 = [  # 7 -> 13 décembre (Rose en repos lun 7 après son dimanche ; Jennyfer indispo lun 7 ; Emma indispo ven 11 -> dim 13)
+ {'Emma': E_OUV, 'Yassine': YFER, 'Jennyfer': ('INDISPONIBLE', 0)},
  {'Rose': OUV7, 'Yassine': OUV7, 'Emma': E_FER},
- {'Rose': OUV7, 'Yassine': YFER},
+ {'Rose': OUV8, 'Yassine': YFER},
  {'Emma': E_OUV, 'Rose': ROSE_LATE, 'Jennyfer': JF},
  {'Rose': OUV7, 'Yassine': YMID, 'Jennyfer': JF, 'Emma': ('INDISPONIBLE', 0)},
- {'Sara': SAT_SARA, 'Yassine': YMID, 'Jennyfer': JF, 'Emma': ('INDISPONIBLE', 0)},
+ {'Sara': SAT_SARA, 'Rose': OUV7, 'Jennyfer': JF, 'Emma': ('INDISPONIBLE', 0)},
  {'Sara': SUN_SARA, 'Yassine': SUN_Y, 'Jennyfer': SUN_J, 'Emma': ('INDISPONIBLE', 0)},
 ]
 WEEKS = [(dt.date(2026, 11, 23), W1), (dt.date(2026, 11, 30), W2), (dt.date(2026, 12, 7), W3)]
 NOTES = [
  "• Période des fêtes : 3 personnes du jeudi au dimanche ; mardi Rose + Yassine ouvrent ensemble à 09:50 (commande), Jennyfer ou Emma ferme.",
- "• Rose en ouverture du lundi au vendredi (part toujours avant la fermeture), sauf un jour par semaine où elle commence à 12h (jeu 26/11, ven 4/12, jeu 10/12) : Emma ouvre ce jour-là.",
- "• Yassine tous les dimanches, avec Sara et Emma (Jennyfer le 13/12 : son seul dimanche du mois, Emma étant indispo). Jennyfer toujours en fermeture.",
+ "• Rose en ouverture du lundi au vendredi (part toujours avant la fermeture), sauf un jour par semaine où elle commence à 12h (jeu 26/11, ven 4/12, jeu 10/12) : Emma ouvre ce jour-là. Rose fait le samedi 12/12 (ouverture) à la place du lundi 7.",
+ "• Dimanche : Yassine + Sara + Emma (29/11), Rose (6/12) ou Jennyfer (13/12 : son seul dimanche du mois, Emma étant indispo). Rose est en repos le lundi qui suit son dimanche (Emma ouvre). Jennyfer toujours en fermeture.",
  "• Indispos : Emma ven 27/11, mer 2/12 matin, ven 11 → dim 13/12 · Jennyfer dim 6 et lun 7/12.",
 ]
